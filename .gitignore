@@ -1,5 +1,5 @@
 # Binaries
-smsc-gateway
+/smsc-gateway
 *.exe
 *.exe~
 *.dll
