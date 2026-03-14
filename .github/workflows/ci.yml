@@ -11,17 +11,14 @@ permissions:
 
 jobs:
   test:
-    name: Test (Go ${{ matrix.go-version }})
+    name: Test (Go 1.26)
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        go-version: ['1.23', '1.24']
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v5
         with:
-          go-version: ${{ matrix.go-version }}
+          go-version: '1.26'
 
       - name: Download dependencies
         run: go mod download
@@ -33,7 +30,6 @@ jobs:
         run: go test ./... -race -count=1 -timeout 300s -coverprofile=coverage.out -covermode=atomic
 
       - name: Upload coverage
-        if: matrix.go-version == '1.24'
         uses: codecov/codecov-action@v4
         with:
           files: coverage.out
@@ -49,7 +45,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.26'
 
       - name: Build binary (static)
         run: CGO_ENABLED=0 go build -o smsc-gateway ./cmd/smsc-gateway
@@ -68,7 +64,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.26'
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
@@ -101,7 +97,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.26'
 
       - name: Run E2E test
         run: go test ./e2e/... -v -count=1 -timeout 60s

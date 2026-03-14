@@ -17,7 +17,7 @@ Thank you for your interest in contributing to go-smsc!
 
 ### Prerequisites
 
-- Go 1.23 or later
+- Go 1.26
 - Docker (for integration tests and building container images)
 
 ### Building
