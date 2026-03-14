@@ -311,26 +311,15 @@ func (c *Connection) sendResponse(cmdID, status, seqNum uint32, body []byte) err
 }
 
 // readCString reads a null-terminated string from data starting at offset.
+// Delegates to the exported smpp.ReadCString.
 func readCString(data []byte, offset int) (string, int) {
-	if offset >= len(data) {
-		return "", offset
-	}
-	end := offset
-	for end < len(data) && data[end] != 0x00 {
-		end++
-	}
-	s := string(data[offset:end])
-	if end < len(data) {
-		end++
-	}
-	return s, end
+	return smpp.ReadCString(data, offset)
 }
 
 // writeCStringBytes creates a byte slice containing a null-terminated string.
+// Delegates to the exported smpp.WriteCStringBytes.
 func writeCStringBytes(s string) []byte {
-	b := make([]byte, len(s)+1)
-	copy(b, s)
-	return b
+	return smpp.WriteCStringBytes(s)
 }
 
 // ParseSubmitSMAddresses extracts source and destination addresses from a

@@ -191,13 +191,13 @@ func (s *Server) handleConnection(conn net.Conn) {
 		case smpp.CmdBindTransceiver:
 			// Parse bind fields for logging. The body contains C-strings:
 			// system_id, password, system_type, then interface_version, addr_ton, addr_npi, address_range
-			systemID := readCStringFromBody(pdu.Body, 0)
+			systemID, _ := smpp.ReadCString(pdu.Body, 0)
 			s.logger.Info("bind_transceiver received",
 				zap.String("system_id", systemID),
 			)
 
 			// Send bind_transceiver_resp with success.
-			respBody := writeCStringToBytes("MOCKSMSC")
+			respBody := smpp.WriteCStringBytes("MOCKSMSC")
 			resp := &smpp.PDU{
 				CommandID:      smpp.CmdBindTransceiverResp,
 				CommandStatus:  smpp.StatusOK,
@@ -253,7 +253,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 			)
 
 			// Send submit_sm_resp with the message ID.
-			respBody := writeCStringToBytes(messageID)
+			respBody := smpp.WriteCStringBytes(messageID)
 			resp := &smpp.PDU{
 				CommandID:      smpp.CmdSubmitSMResp,
 				CommandStatus:  smpp.StatusOK,
@@ -499,22 +499,3 @@ func (s *Server) writePDU(conn net.Conn, pdu *smpp.PDU) error {
 	return err
 }
 
-// readCStringFromBody reads a null-terminated string from the given body starting at offset.
-func readCStringFromBody(body []byte, offset int) string {
-	if offset >= len(body) {
-		return ""
-	}
-	end := offset
-	for end < len(body) && body[end] != 0x00 {
-		end++
-	}
-	return string(body[offset:end])
-}
-
-// writeCStringToBytes creates a byte slice containing a null-terminated string.
-func writeCStringToBytes(s string) []byte {
-	b := make([]byte, len(s)+1)
-	copy(b, s)
-	b[len(s)] = 0x00
-	return b
-}

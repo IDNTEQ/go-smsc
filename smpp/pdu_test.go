@@ -601,3 +601,169 @@ func makeBinaryPayload(n int) []byte {
 	}
 	return b
 }
+
+// =============================================================================
+// EncodePDU TLV integration tests
+// =============================================================================
+
+func TestEncodePDU_NilTLVs_Regression(t *testing.T) {
+	// With TLVs = nil (default), EncodePDU must produce identical output
+	// to the pre-TLV implementation: header + body only.
+	pdu := &PDU{
+		CommandID:      CmdSubmitSMResp,
+		CommandStatus:  StatusOK,
+		SequenceNumber: 42,
+		Body:           []byte("GW-123\x00"),
+	}
+	encoded := EncodePDU(pdu)
+	expectedLen := uint32(16 + len(pdu.Body))
+	if pdu.CommandLength != expectedLen {
+		t.Errorf("CommandLength = %d, want %d", pdu.CommandLength, expectedLen)
+	}
+	if uint32(len(encoded)) != expectedLen {
+		t.Errorf("encoded length = %d, want %d", len(encoded), expectedLen)
+	}
+}
+
+func TestEncodePDU_EmptyTLVSet(t *testing.T) {
+	// Non-nil but empty TLVSet should produce no extra bytes.
+	pdu := &PDU{
+		CommandID:      CmdSubmitSMResp,
+		CommandStatus:  StatusOK,
+		SequenceNumber: 42,
+		Body:           []byte("GW-123\x00"),
+		TLVs:           make(TLVSet),
+	}
+	encoded := EncodePDU(pdu)
+	expectedLen := uint32(16 + len(pdu.Body))
+	if pdu.CommandLength != expectedLen {
+		t.Errorf("CommandLength = %d, want %d", pdu.CommandLength, expectedLen)
+	}
+	if uint32(len(encoded)) != expectedLen {
+		t.Errorf("encoded length = %d, want %d", len(encoded), expectedLen)
+	}
+}
+
+func TestEncodePDU_WithTLVs(t *testing.T) {
+	tlvs := make(TLVSet)
+	tlvs.SetString(TagReceiptedMessageID, "MSG-42")
+	tlvs.SetUint8(TagMessageState, MsgStateDelivered)
+	tlvBytes := tlvs.Encode()
+
+	body := []byte{0x00} // minimal body
+	pdu := &PDU{
+		CommandID:      CmdDeliverSMResp,
+		CommandStatus:  StatusOK,
+		SequenceNumber: 10,
+		Body:           body,
+		TLVs:           tlvs,
+	}
+	encoded := EncodePDU(pdu)
+
+	expectedLen := uint32(16 + len(body) + len(tlvBytes))
+	if pdu.CommandLength != expectedLen {
+		t.Errorf("CommandLength = %d, want %d", pdu.CommandLength, expectedLen)
+	}
+	if uint32(len(encoded)) != expectedLen {
+		t.Errorf("encoded length = %d, want %d", len(encoded), expectedLen)
+	}
+
+	// Verify the TLV bytes appear after body.
+	tlvStart := 16 + len(body)
+	actualTLVBytes := encoded[tlvStart:]
+	if len(actualTLVBytes) != len(tlvBytes) {
+		t.Fatalf("TLV bytes length = %d, want %d", len(actualTLVBytes), len(tlvBytes))
+	}
+	for i, b := range tlvBytes {
+		if actualTLVBytes[i] != b {
+			t.Errorf("TLV byte[%d] = 0x%02X, want 0x%02X", i, actualTLVBytes[i], b)
+			break
+		}
+	}
+}
+
+func TestEncodePDU_TLV_Roundtrip(t *testing.T) {
+	// Create a deliver_sm with body and TLVs, encode, decode, extract TLVs.
+	mandatoryBody := buildDeliverSMBody("+27830001234", "GATEWAY", 0x04, []byte("test msg"))
+
+	tlvs := make(TLVSet)
+	tlvs.SetString(TagReceiptedMessageID, "ID-100")
+	tlvs.SetUint8(TagMessageState, MsgStateDelivered)
+
+	pdu := &PDU{
+		CommandID:      CmdDeliverSM,
+		CommandStatus:  StatusOK,
+		SequenceNumber: 77,
+		Body:           mandatoryBody,
+		TLVs:           tlvs,
+	}
+
+	encoded := EncodePDU(pdu)
+	decoded, err := DecodePDU(encoded)
+	if err != nil {
+		t.Fatalf("DecodePDU failed: %v", err)
+	}
+
+	if decoded.CommandID != CmdDeliverSM {
+		t.Errorf("CommandID = 0x%08X, want 0x%08X", decoded.CommandID, CmdDeliverSM)
+	}
+	if decoded.SequenceNumber != 77 {
+		t.Errorf("SequenceNumber = %d, want 77", decoded.SequenceNumber)
+	}
+
+	// The decoded PDU's Body contains mandatory + TLV bytes (DecodePDU
+	// does not split them). Use ExtractTLVs to recover TLVs.
+	extracted, err := ExtractTLVs(decoded)
+	if err != nil {
+		t.Fatalf("ExtractTLVs() error: %v", err)
+	}
+	if extracted == nil {
+		t.Fatal("ExtractTLVs() returned nil")
+	}
+
+	msgID, ok := extracted.GetString(TagReceiptedMessageID)
+	if !ok || msgID != "ID-100" {
+		t.Errorf("receipted_message_id = %q (ok=%v), want %q", msgID, ok, "ID-100")
+	}
+
+	state, ok := extracted.GetUint8(TagMessageState)
+	if !ok || state != MsgStateDelivered {
+		t.Errorf("message_state = %d (ok=%v), want %d", state, ok, MsgStateDelivered)
+	}
+}
+
+// =============================================================================
+// ReadCString exported function tests
+// =============================================================================
+
+func TestReadCString_Exported(t *testing.T) {
+	data := []byte("hello\x00world\x00")
+	s, offset := ReadCString(data, 0)
+	if s != "hello" {
+		t.Errorf("ReadCString() = %q, want %q", s, "hello")
+	}
+	if offset != 6 {
+		t.Errorf("offset = %d, want 6", offset)
+	}
+
+	s2, offset2 := ReadCString(data, offset)
+	if s2 != "world" {
+		t.Errorf("ReadCString() = %q, want %q", s2, "world")
+	}
+	if offset2 != 12 {
+		t.Errorf("offset = %d, want 12", offset2)
+	}
+}
+
+func TestWriteCStringBytes(t *testing.T) {
+	result := WriteCStringBytes("test")
+	expected := []byte("test\x00")
+	if len(result) != len(expected) {
+		t.Fatalf("WriteCStringBytes length = %d, want %d", len(result), len(expected))
+	}
+	for i, b := range expected {
+		if result[i] != b {
+			t.Errorf("byte[%d] = 0x%02X, want 0x%02X", i, result[i], b)
+		}
+	}
+}

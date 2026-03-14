@@ -44,18 +44,29 @@ type PDU struct {
 	CommandStatus  uint32
 	SequenceNumber uint32
 	Body           []byte
+	TLVs           TLVSet // optional, nil means "not parsed / raw proxy mode"
 }
 
 // EncodePDU serialises a PDU into a byte slice ready for transmission.
 // It sets CommandLength automatically based on the header size plus the body.
+// When TLVs is non-nil and contains entries, the encoded TLV bytes are
+// appended after Body and included in CommandLength. When TLVs is nil or
+// empty, behavior is identical to the pre-TLV implementation (header + Body).
 func EncodePDU(pdu *PDU) []byte {
-	pdu.CommandLength = uint32(pduHeaderLen + len(pdu.Body))
+	var tlvBytes []byte
+	if pdu.TLVs != nil {
+		tlvBytes = pdu.TLVs.Encode() // returns nil when empty
+	}
+	pdu.CommandLength = uint32(pduHeaderLen + len(pdu.Body) + len(tlvBytes))
 	buf := make([]byte, pdu.CommandLength)
 	binary.BigEndian.PutUint32(buf[0:4], pdu.CommandLength)
 	binary.BigEndian.PutUint32(buf[4:8], pdu.CommandID)
 	binary.BigEndian.PutUint32(buf[8:12], pdu.CommandStatus)
 	binary.BigEndian.PutUint32(buf[12:16], pdu.SequenceNumber)
 	copy(buf[16:], pdu.Body)
+	if len(tlvBytes) > 0 {
+		copy(buf[16+len(pdu.Body):], tlvBytes)
+	}
 	return buf
 }
 
@@ -88,11 +99,11 @@ func writeCString(buf *bytes.Buffer, s string) {
 	buf.WriteByte(0x00)
 }
 
-// readCString reads a null-terminated C-string from data starting at offset.
+// ReadCString reads a null-terminated C-string from data starting at offset.
 // Returns the string and the offset just past the null terminator.
 // Handles out-of-bounds offset gracefully (returns empty string) to prevent
 // panics on truncated/malformed PDUs from non-compliant SMSCs.
-func readCString(data []byte, offset int) (string, int) {
+func ReadCString(data []byte, offset int) (string, int) {
 	if offset >= len(data) {
 		return "", offset
 	}
@@ -105,6 +116,18 @@ func readCString(data []byte, offset int) (string, int) {
 		end++ // skip null terminator
 	}
 	return s, end
+}
+
+// readCString is an unexported wrapper around ReadCString for internal use.
+func readCString(data []byte, offset int) (string, int) {
+	return ReadCString(data, offset)
+}
+
+// WriteCStringBytes creates a byte slice containing a null-terminated C-string.
+func WriteCStringBytes(s string) []byte {
+	b := make([]byte, len(s)+1)
+	copy(b, s)
+	return b
 }
 
 // EncodeBindTransceiver builds the body of a bind_transceiver PDU.
