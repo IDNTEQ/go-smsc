@@ -320,26 +320,23 @@ type RealtimeMetrics struct {
 }
 
 func (a *AdminAPI) handleWebSocket(ws *websocket.Conn) {
-	defer ws.Close()
+	defer func() { _ = ws.Close() }()
 
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			m := RealtimeMetrics{
-				Timestamp:       time.Now(),
-				Pools:           a.poolManager.AllHealth(),
-				NorthboundConns: a.server.ConnectionCount(),
-			}
-			if a.router.store != nil {
-				m.StoreSize = a.router.store.MessageCount()
-				m.RetryQueueSize = a.router.store.PendingRetryCount()
-			}
-			if err := websocket.JSON.Send(ws, m); err != nil {
-				return // Client disconnected
-			}
+	for range ticker.C {
+		m := RealtimeMetrics{
+			Timestamp:       time.Now(),
+			Pools:           a.poolManager.AllHealth(),
+			NorthboundConns: a.server.ConnectionCount(),
+		}
+		if a.router.store != nil {
+			m.StoreSize = a.router.store.MessageCount()
+			m.RetryQueueSize = a.router.store.PendingRetryCount()
+		}
+		if err := websocket.JSON.Send(ws, m); err != nil {
+			return // Client disconnected
 		}
 	}
 }

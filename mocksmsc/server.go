@@ -87,12 +87,12 @@ func (s *Server) Stop() {
 	close(s.done)
 
 	if s.listener != nil {
-		s.listener.Close()
+		_ = s.listener.Close()
 	}
 
 	s.mu.Lock()
 	for conn := range s.clients {
-		conn.Close()
+		_ = conn.Close()
 	}
 	s.clients = make(map[net.Conn]*sync.Mutex)
 	s.mu.Unlock()
@@ -134,7 +134,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 		s.mu.Lock()
 		delete(s.clients, conn)
 		s.mu.Unlock()
-		conn.Close()
+		_ = conn.Close()
 		s.logger.Info("SMPP client disconnected",
 			zap.String("remote_addr", conn.RemoteAddr().String()),
 		)
@@ -220,7 +220,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 					SequenceNumber: pdu.SequenceNumber,
 					Body:           []byte{0x00},
 				}
-				s.writePDU(conn, resp)
+				_ = s.writePDU(conn, resp)
 				continue
 			}
 
@@ -312,7 +312,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 				CommandStatus:  smpp.StatusOK,
 				SequenceNumber: pdu.SequenceNumber,
 			}
-			s.writePDU(conn, resp)
+			_ = s.writePDU(conn, resp)
 			s.logger.Info("client unbound")
 			return
 
@@ -327,7 +327,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 				CommandStatus:  smpp.StatusInvCmdID,
 				SequenceNumber: pdu.SequenceNumber,
 			}
-			s.writePDU(conn, resp)
+			_ = s.writePDU(conn, resp)
 		}
 	}
 }
@@ -471,8 +471,8 @@ func (s *Server) buildDeliverSMBody(sourceAddr string, destAddr string, esmClass
 	// sm_length + short_message
 	if len(shortMessage) > 254 {
 		buf.WriteByte(0x00)
-		binary.Write(&buf, binary.BigEndian, uint16(0x0424))
-		binary.Write(&buf, binary.BigEndian, uint16(len(shortMessage)))
+		_ = binary.Write(&buf, binary.BigEndian, uint16(0x0424))
+		_ = binary.Write(&buf, binary.BigEndian, uint16(len(shortMessage)))
 		buf.Write(shortMessage)
 	} else {
 		buf.WriteByte(byte(len(shortMessage)))

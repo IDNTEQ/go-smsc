@@ -74,7 +74,7 @@ func (r *Router) HandleHTTPSubmit(w http.ResponseWriter, req *http.Request) {
 
 	// Write durable status for REST query lifecycle tracking.
 	if r.store != nil {
-		r.store.SetMessageStatus(&MessageStatus{
+		_ = r.store.SetMessageStatus(&MessageStatus{
 			GwMsgID:   gwMsgID,
 			To:        body.To,
 			From:      body.From,
@@ -156,7 +156,7 @@ func (r *Router) HandleHTTPBatchSubmit(w http.ResponseWriter, req *http.Request)
 
 		// Write durable status for REST query lifecycle tracking.
 		if r.store != nil {
-			r.store.SetMessageStatus(&MessageStatus{
+			_ = r.store.SetMessageStatus(&MessageStatus{
 				GwMsgID:   gwMsgID,
 				To:        msg.To,
 				From:      msg.From,
@@ -253,5 +253,5 @@ func (r *Router) RegisterRESTRoutes(mux *http.ServeMux, keyStore *APIKeyStore) {
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
+	_ = json.NewEncoder(w).Encode(v)
 }

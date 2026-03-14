@@ -649,7 +649,7 @@ func TestRegisterRESTRoutes_AllEndpoints(t *testing.T) {
 
 	// Extract the ID from submit response for query test
 	var submitResp SMSSubmitResponse
-	json.Unmarshal(rr.Body.Bytes(), &submitResp)
+	_ = json.Unmarshal(rr.Body.Bytes(), &submitResp)
 
 	// Test POST /api/v1/sms/batch
 	req = httptest.NewRequest(http.MethodPost, "/api/v1/sms/batch",

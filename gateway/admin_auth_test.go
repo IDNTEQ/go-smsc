@@ -476,7 +476,7 @@ func TestAdminAuthMiddleware_ValidJWT(t *testing.T) {
 			t.Errorf("expected username 'mw-user', got %q", user.Username)
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	}))
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/test", nil)

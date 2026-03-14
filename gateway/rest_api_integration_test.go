@@ -106,7 +106,7 @@ func startMockSMSC(t *testing.T) int {
 		t.Fatalf("find free port: %v", err)
 	}
 	port := ln.Addr().(*net.TCPAddr).Port
-	ln.Close()
+	_ = ln.Close()
 
 	logger := zaptest.NewLogger(t)
 	srv := mocksmsc.NewServer(mocksmsc.Config{
@@ -308,7 +308,7 @@ func TestIntegration_RESTQuery(t *testing.T) {
 	}
 
 	var submitResp SMSSubmitResponse
-	json.Unmarshal(rr.Body.Bytes(), &submitResp)
+	_ = json.Unmarshal(rr.Body.Bytes(), &submitResp)
 	gwMsgID := submitResp.ID
 
 	// Query the submitted message
@@ -322,7 +322,7 @@ func TestIntegration_RESTQuery(t *testing.T) {
 	}
 
 	var result map[string]any
-	json.Unmarshal(rr.Body.Bytes(), &result)
+	_ = json.Unmarshal(rr.Body.Bytes(), &result)
 	if result["id"] != gwMsgID {
 		t.Errorf("expected id %q, got %v", gwMsgID, result["id"])
 	}
@@ -589,7 +589,7 @@ func TestIntegration_AdminAPI_LoginAndRoutes(t *testing.T) {
 	}
 
 	var mtRoutes []*MTRoute
-	json.Unmarshal(rr.Body.Bytes(), &mtRoutes)
+	_ = json.Unmarshal(rr.Body.Bytes(), &mtRoutes)
 	if len(mtRoutes) != 0 {
 		t.Errorf("expected 0 MT routes initially, got %d", len(mtRoutes))
 	}
@@ -615,7 +615,7 @@ func TestIntegration_AdminAPI_LoginAndRoutes(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("list MT routes after create: expected 200, got %d", rr.Code)
 	}
-	json.Unmarshal(rr.Body.Bytes(), &mtRoutes)
+	_ = json.Unmarshal(rr.Body.Bytes(), &mtRoutes)
 	if len(mtRoutes) != 1 {
 		t.Fatalf("expected 1 MT route after create, got %d", len(mtRoutes))
 	}
@@ -651,7 +651,7 @@ func TestIntegration_AdminAPI_LoginAndRoutes(t *testing.T) {
 	rr = httptest.NewRecorder()
 	ts.mux.ServeHTTP(rr, req)
 
-	json.Unmarshal(rr.Body.Bytes(), &mtRoutes)
+	_ = json.Unmarshal(rr.Body.Bytes(), &mtRoutes)
 	if len(mtRoutes) != 0 {
 		t.Errorf("expected 0 MT routes after delete, got %d", len(mtRoutes))
 	}
@@ -741,7 +741,7 @@ func TestIntegration_AdminAPI_APIKeys(t *testing.T) {
 	}
 
 	var createResp map[string]string
-	json.Unmarshal(rr.Body.Bytes(), &createResp)
+	_ = json.Unmarshal(rr.Body.Bytes(), &createResp)
 	plainKey := createResp["key"]
 	if plainKey == "" {
 		t.Fatal("expected non-empty key in create response")
@@ -776,7 +776,7 @@ func TestIntegration_AdminAPI_APIKeys(t *testing.T) {
 	}
 
 	var keys []*APIKey
-	json.Unmarshal(rr.Body.Bytes(), &keys)
+	_ = json.Unmarshal(rr.Body.Bytes(), &keys)
 	if len(keys) != 1 {
 		t.Fatalf("expected 1 API key, got %d", len(keys))
 	}
@@ -812,7 +812,7 @@ func TestIntegration_AdminAPI_APIKeys(t *testing.T) {
 	rr = httptest.NewRecorder()
 	ts.mux.ServeHTTP(rr, req)
 
-	json.Unmarshal(rr.Body.Bytes(), &keys)
+	_ = json.Unmarshal(rr.Body.Bytes(), &keys)
 	if len(keys) != 0 {
 		t.Errorf("expected 0 API keys after revoke, got %d", len(keys))
 	}
@@ -837,7 +837,7 @@ func TestIntegration_AdminAPI_MORoutes(t *testing.T) {
 	}
 
 	var moRoutes []*MORoute
-	json.Unmarshal(rr.Body.Bytes(), &moRoutes)
+	_ = json.Unmarshal(rr.Body.Bytes(), &moRoutes)
 	if len(moRoutes) != 0 {
 		t.Errorf("expected 0 MO routes initially, got %d", len(moRoutes))
 	}
@@ -860,7 +860,7 @@ func TestIntegration_AdminAPI_MORoutes(t *testing.T) {
 	rr = httptest.NewRecorder()
 	ts.mux.ServeHTTP(rr, req)
 
-	json.Unmarshal(rr.Body.Bytes(), &moRoutes)
+	_ = json.Unmarshal(rr.Body.Bytes(), &moRoutes)
 	if len(moRoutes) != 1 {
 		t.Fatalf("expected 1 MO route after create, got %d", len(moRoutes))
 	}
@@ -893,7 +893,7 @@ func TestIntegration_AdminAPI_MORoutes(t *testing.T) {
 	rr = httptest.NewRecorder()
 	ts.mux.ServeHTTP(rr, req)
 
-	json.Unmarshal(rr.Body.Bytes(), &moRoutes)
+	_ = json.Unmarshal(rr.Body.Bytes(), &moRoutes)
 	if len(moRoutes) != 0 {
 		t.Errorf("expected 0 MO routes after delete, got %d", len(moRoutes))
 	}
@@ -919,7 +919,7 @@ func TestIntegration_AdminAPI_Users(t *testing.T) {
 	}
 
 	var users []*AdminUser
-	json.Unmarshal(rr.Body.Bytes(), &users)
+	_ = json.Unmarshal(rr.Body.Bytes(), &users)
 	if len(users) != 1 {
 		t.Fatalf("expected 1 user, got %d", len(users))
 	}
@@ -1026,7 +1026,7 @@ func TestIntegration_AdminAPI_Pools(t *testing.T) {
 	}
 
 	var pools []PoolHealth
-	json.Unmarshal(rr.Body.Bytes(), &pools)
+	_ = json.Unmarshal(rr.Body.Bytes(), &pools)
 	if len(pools) != 0 {
 		t.Errorf("expected 0 pools initially, got %d", len(pools))
 	}
@@ -1049,7 +1049,7 @@ func TestIntegration_AdminAPI_Pools(t *testing.T) {
 	rr = httptest.NewRecorder()
 	ts.mux.ServeHTTP(rr, req)
 
-	json.Unmarshal(rr.Body.Bytes(), &pools)
+	_ = json.Unmarshal(rr.Body.Bytes(), &pools)
 	if len(pools) != 1 {
 		t.Fatalf("expected 1 pool, got %d", len(pools))
 	}
@@ -1076,7 +1076,7 @@ func TestIntegration_AdminAPI_Pools(t *testing.T) {
 	rr = httptest.NewRecorder()
 	ts.mux.ServeHTTP(rr, req)
 
-	json.Unmarshal(rr.Body.Bytes(), &pools)
+	_ = json.Unmarshal(rr.Body.Bytes(), &pools)
 	if len(pools) != 0 {
 		t.Errorf("expected 0 pools after delete, got %d", len(pools))
 	}
@@ -1125,7 +1125,7 @@ func TestIntegration_RESTSubmitThroughPool(t *testing.T) {
 	if err := pool.Connect(ctx); err != nil {
 		t.Fatalf("connect pool: %v", err)
 	}
-	defer pool.Close()
+	defer func() { _ = pool.Close() }()
 
 	router.SetSouthbound(pool)
 	router.StartForwardWorkers(2)
@@ -1150,7 +1150,7 @@ func TestIntegration_RESTSubmitThroughPool(t *testing.T) {
 	}
 
 	var submitResp SMSSubmitResponse
-	json.Unmarshal(rr.Body.Bytes(), &submitResp)
+	_ = json.Unmarshal(rr.Body.Bytes(), &submitResp)
 	if submitResp.ID == "" {
 		t.Fatal("expected non-empty gwMsgID")
 	}
@@ -1262,7 +1262,7 @@ func TestIntegration_FullStack_AdminThenREST(t *testing.T) {
 	}
 
 	var keyResp map[string]string
-	json.Unmarshal(rr.Body.Bytes(), &keyResp)
+	_ = json.Unmarshal(rr.Body.Bytes(), &keyResp)
 	apiKey := keyResp["key"]
 	if apiKey == "" {
 		t.Fatal("expected non-empty API key")
@@ -1283,7 +1283,7 @@ func TestIntegration_FullStack_AdminThenREST(t *testing.T) {
 	}
 
 	var submitResp SMSSubmitResponse
-	json.Unmarshal(rr.Body.Bytes(), &submitResp)
+	_ = json.Unmarshal(rr.Body.Bytes(), &submitResp)
 	if submitResp.ID == "" {
 		t.Fatal("expected non-empty message ID")
 	}

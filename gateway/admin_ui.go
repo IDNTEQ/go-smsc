@@ -31,7 +31,7 @@ func AdminUIHandler() http.Handler {
 			fileServer.ServeHTTP(w, r)
 			return
 		}
-		f.Close()
+		_ = f.Close()
 
 		r.URL.Path = path
 		fileServer.ServeHTTP(w, r)

@@ -168,7 +168,7 @@ func (s *MessageStore) GetSubmit(smppMsgID string) (*SubmitRecord, error) {
 		}
 		return nil, fmt.Errorf("get submit record: %w", err)
 	}
-	defer closer.Close()
+	defer func() { _ = closer.Close() }()
 
 	var record SubmitRecord
 	if err := json.Unmarshal(data, &record); err != nil {
@@ -188,7 +188,7 @@ func (s *MessageStore) GetSubmitByGwID(gwMsgID string) (*SubmitRecord, error) {
 		}
 		return nil, fmt.Errorf("get submit record by gw ID: %w", err)
 	}
-	defer closer.Close()
+	defer func() { _ = closer.Close() }()
 
 	var record SubmitRecord
 	if err := json.Unmarshal(data, &record); err != nil {
@@ -246,11 +246,11 @@ func (s *MessageStore) DrainRetries(maxAge time.Duration, limit int) ([]*Pending
 	if err != nil {
 		return nil, fmt.Errorf("create retry iterator: %w", err)
 	}
-	defer iter.Close()
+	defer func() { _ = iter.Close() }()
 
 	var results []*PendingDeliver
 	batch := s.db.NewBatch()
-	defer batch.Close()
+	defer func() { _ = batch.Close() }()
 	deleted := 0
 
 	for iter.First(); iter.Valid(); iter.Next() {
@@ -310,11 +310,11 @@ func (s *MessageStore) DrainSubmitRetries(limit int) ([]*PendingSubmit, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create submit retry iterator: %w", err)
 	}
-	defer iter.Close()
+	defer func() { _ = iter.Close() }()
 
 	var results []*PendingSubmit
 	batch := s.db.NewBatch()
-	defer batch.Close()
+	defer func() { _ = batch.Close() }()
 	deleted := 0
 
 	for iter.First(); iter.Valid(); iter.Next() {
@@ -356,7 +356,7 @@ func (s *MessageStore) Cleanup(ttl time.Duration) (int, error) {
 	cutoff := time.Now().Add(-ttl)
 	deleted := 0
 	batch := s.db.NewBatch()
-	defer batch.Close()
+	defer func() { _ = batch.Close() }()
 
 	// Scan key prefixes: msg:{smscMsgID}, gw:{gwMsgID}, and status:{gwMsgID}.
 	for _, prefix := range []string{"msg:", "gw:", "status:"} {
@@ -392,7 +392,7 @@ func (s *MessageStore) Cleanup(ttl time.Duration) (int, error) {
 				deleted++
 			}
 		}
-		iter.Close()
+		_ = iter.Close()
 	}
 
 	if deleted > 0 {
@@ -461,7 +461,7 @@ func (s *MessageStore) batchWriteLoop() {
 		case op, ok := <-s.writeCh:
 			if !ok {
 				flush()
-				batch.Close()
+				_ = batch.Close()
 				return
 			}
 			_ = batch.Set(op.key, op.data, pebble.NoSync)
@@ -480,7 +480,7 @@ func (s *MessageStore) batchWriteLoop() {
 					if !ok {
 						// Channel was already closed (should not happen, but handle gracefully).
 						flush()
-						batch.Close()
+						_ = batch.Close()
 						return
 					}
 					_ = batch.Set(op.key, op.data, pebble.NoSync)
@@ -489,7 +489,7 @@ func (s *MessageStore) batchWriteLoop() {
 					// Channel drained. Close it and flush the final batch.
 					close(s.writeCh)
 					flush()
-					batch.Close()
+					_ = batch.Close()
 					return
 				}
 			}
@@ -539,7 +539,7 @@ func (s *MessageStore) GetJSON(key string, v any) error {
 	if err != nil {
 		return err
 	}
-	defer closer.Close()
+	defer func() { _ = closer.Close() }()
 	return json.Unmarshal(data, v)
 }
 
@@ -557,7 +557,7 @@ func (s *MessageStore) ScanPrefix(prefix string, fn func(key string, data []byte
 	if err != nil {
 		return err
 	}
-	defer iter.Close()
+	defer func() { _ = iter.Close() }()
 	for iter.First(); iter.Valid(); iter.Next() {
 		val, err := iter.ValueAndErr()
 		if err != nil {

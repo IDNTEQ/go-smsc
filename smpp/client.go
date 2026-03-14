@@ -187,7 +187,7 @@ func (c *Client) Connect(ctx context.Context) error {
 
 	if err := c.writePDU(bindPDU); err != nil {
 		c.unregisterPending(seq)
-		conn.Close()
+		_ = conn.Close()
 		return fmt.Errorf("send bind_transceiver: %w", err)
 	}
 
@@ -195,7 +195,7 @@ func (c *Client) Connect(ctx context.Context) error {
 	select {
 	case resp := <-respCh:
 		if resp.CommandStatus != StatusOK {
-			conn.Close()
+			_ = conn.Close()
 			return fmt.Errorf("bind_transceiver failed with status 0x%08X", resp.CommandStatus)
 		}
 		c.bound = true
@@ -203,10 +203,10 @@ func (c *Client) Connect(ctx context.Context) error {
 			zap.String("system_id", c.config.SystemID),
 		)
 	case <-time.After(15 * time.Second):
-		conn.Close()
+		_ = conn.Close()
 		return fmt.Errorf("bind_transceiver response timeout")
 	case <-ctx.Done():
-		conn.Close()
+		_ = conn.Close()
 		return ctx.Err()
 	}
 
@@ -546,7 +546,7 @@ func (c *Client) startDeliverLoop() {
 					}
 
 					// Send deliver_sm_resp AFTER handler completes.
-					var status uint32 = StatusOK
+					status := StatusOK
 					if handlerErr != nil {
 						status = StatusSysErr
 						c.logger.Warn("deliver handler failed, NACKing SMSC",
@@ -624,6 +624,6 @@ func (c *Client) handleDisconnect() {
 	c.pendingMu.Unlock()
 
 	if c.conn != nil {
-		c.conn.Close()
+		_ = c.conn.Close()
 	}
 }

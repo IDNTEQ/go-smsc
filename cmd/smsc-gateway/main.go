@@ -44,7 +44,7 @@ func run(ctx context.Context, logger *zap.Logger) error {
 	if err != nil {
 		return err
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// 3. Router (server and pool set after creation)
 	router := gateway.NewRouter(store, metrics, cfg, logger.Named("router"))
@@ -94,7 +94,7 @@ func run(ctx context.Context, logger *zap.Logger) error {
 		if err := pool.Connect(ctx); err != nil {
 			return err
 		}
-		defer pool.Close()
+		defer func() { _ = pool.Close() }()
 	} else {
 		defer poolManager.Close()
 	}

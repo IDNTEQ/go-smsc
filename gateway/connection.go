@@ -133,25 +133,25 @@ func (c *Connection) ReadLoop(
 
 		case smpp.CmdSubmitSM:
 			if !c.bound {
-				c.sendResponse(smpp.CmdSubmitSMResp, smpp.StatusInvBnd, pdu.SequenceNumber, []byte{0x00})
+				_ = c.sendResponse(smpp.CmdSubmitSMResp, smpp.StatusInvBnd, pdu.SequenceNumber, []byte{0x00})
 				continue
 			}
 			onSubmit(c.ID, pdu.SequenceNumber, pdu.Body)
 
 		case smpp.CmdEnquireLink:
-			c.sendResponse(smpp.CmdEnquireLinkResp, smpp.StatusOK, pdu.SequenceNumber, nil)
+			_ = c.sendResponse(smpp.CmdEnquireLinkResp, smpp.StatusOK, pdu.SequenceNumber, nil)
 
 		case smpp.CmdDeliverSMResp:
 			onDeliverResp(c.ID, pdu.SequenceNumber, pdu.CommandStatus)
 
 		case smpp.CmdUnbind:
-			c.sendResponse(smpp.CmdUnbindResp, smpp.StatusOK, pdu.SequenceNumber, nil)
+			_ = c.sendResponse(smpp.CmdUnbindResp, smpp.StatusOK, pdu.SequenceNumber, nil)
 			c.logger.Info("engine unbound")
 			return
 
 		default:
 			c.logger.Warn("unhandled PDU", zap.Uint32("command_id", pdu.CommandID))
-			c.sendResponse(smpp.CmdGenericNack, smpp.StatusInvCmdID, pdu.SequenceNumber, nil)
+			_ = c.sendResponse(smpp.CmdGenericNack, smpp.StatusInvCmdID, pdu.SequenceNumber, nil)
 		}
 	}
 }
@@ -167,7 +167,7 @@ func (c *Connection) handleBind(pdu *smpp.PDU, cfg BindConfig) bool {
 
 	if cfg.Password != "" && password != cfg.Password {
 		c.logger.Warn("bind rejected: invalid password")
-		c.sendResponse(smpp.CmdBindTransceiverResp, smpp.StatusInvBnd, pdu.SequenceNumber, []byte{0x00})
+		_ = c.sendResponse(smpp.CmdBindTransceiverResp, smpp.StatusInvBnd, pdu.SequenceNumber, []byte{0x00})
 		return false
 	}
 
@@ -182,7 +182,7 @@ func (c *Connection) handleBind(pdu *smpp.PDU, cfg BindConfig) bool {
 		}
 		if !allowed {
 			c.logger.Warn("bind rejected: system_id not in allowed list")
-			c.sendResponse(smpp.CmdBindTransceiverResp, smpp.StatusInvBnd, pdu.SequenceNumber, []byte{0x00})
+			_ = c.sendResponse(smpp.CmdBindTransceiverResp, smpp.StatusInvBnd, pdu.SequenceNumber, []byte{0x00})
 			return false
 		}
 	}
@@ -193,7 +193,7 @@ func (c *Connection) handleBind(pdu *smpp.PDU, cfg BindConfig) bool {
 		serverID = "SMSCGW"
 	}
 	respBody := writeCStringBytes(serverID)
-	c.sendResponse(smpp.CmdBindTransceiverResp, smpp.StatusOK, pdu.SequenceNumber, respBody)
+	_ = c.sendResponse(smpp.CmdBindTransceiverResp, smpp.StatusOK, pdu.SequenceNumber, respBody)
 	c.bound = true
 	return true
 }

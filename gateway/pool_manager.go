@@ -125,7 +125,7 @@ func (pm *PoolManager) Remove(name string) error {
 		return fmt.Errorf("pool %q not found", name)
 	}
 
-	p.Close()
+	_ = p.Close()
 	delete(pm.pools, name)
 	delete(pm.configs, name)
 	pm.logger.Info("southbound pool removed", zap.String("name", name))
@@ -177,7 +177,7 @@ func (pm *PoolManager) Close() {
 	defer pm.mu.Unlock()
 
 	for name, p := range pm.pools {
-		p.Close()
+		_ = p.Close()
 		pm.logger.Info("southbound pool closed", zap.String("name", name))
 	}
 	pm.pools = make(map[string]*smpp.Pool)

@@ -34,7 +34,7 @@ func TestTLSConnect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to start TLS listener: %v", err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	addr := ln.Addr().(*net.TCPAddr)
 
@@ -46,7 +46,7 @@ func TestTLSConnect(t *testing.T) {
 			handshakeDone <- err
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		// Read the bind_transceiver PDU from the client.
 		headerBuf := make([]byte, pduHeaderLen)
@@ -118,7 +118,7 @@ func TestTLSConnect(t *testing.T) {
 	if err := client.Connect(ctx); err != nil {
 		t.Fatalf("TLS Connect failed: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Verify the connection is bound.
 	if !client.IsBound() {
@@ -147,7 +147,7 @@ func TestTLSConnectRefusedWithoutInsecure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to start TLS listener: %v", err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	addr := ln.Addr().(*net.TCPAddr)
 
@@ -158,7 +158,7 @@ func TestTLSConnectRefusedWithoutInsecure(t *testing.T) {
 			if err != nil {
 				return
 			}
-			conn.Close()
+			_ = conn.Close()
 		}
 	}()
 
@@ -178,7 +178,7 @@ func TestTLSConnectRefusedWithoutInsecure(t *testing.T) {
 
 	err = client.Connect(ctx)
 	if err == nil {
-		client.Close()
+		_ = client.Close()
 		t.Fatal("expected TLS connection to fail with self-signed cert when InsecureSkipVerify=false")
 	}
 
@@ -193,7 +193,7 @@ func TestPlainConnectUnchanged(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to start TCP listener: %v", err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	addr := ln.Addr().(*net.TCPAddr)
 
@@ -204,7 +204,7 @@ func TestPlainConnectUnchanged(t *testing.T) {
 			handshakeDone <- err
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		headerBuf := make([]byte, pduHeaderLen)
 		_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
@@ -262,7 +262,7 @@ func TestPlainConnectUnchanged(t *testing.T) {
 	if err := client.Connect(ctx); err != nil {
 		t.Fatalf("plain Connect failed: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	if !client.IsBound() {
 		t.Fatal("expected client to be bound after plain connect")

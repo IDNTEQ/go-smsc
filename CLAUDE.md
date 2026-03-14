@@ -43,7 +43,7 @@ All runtime config via `GW_*` environment variables (see `gateway/config.go`). K
 
 ## Conventions
 
-- **Go version:** 1.26 (matches `go.mod` and CI)
+- **Go version:** 1.26 — all code, CI, and Docker must target Go 1.26
 - **Formatting:** `gofmt` (tabs), imports organized by Go toolchain
 - **Naming:** Exported `CamelCase`, unexported `camelCase`, short lowercase packages
 - **File organization:** Focused by responsibility (`rest_api.go`, `admin_auth.go`, `pool_manager.go`)

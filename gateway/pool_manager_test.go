@@ -31,7 +31,7 @@ func startTestSMSC(t *testing.T) (int, func()) {
 		t.Fatalf("find free port: %v", err)
 	}
 	port := ln.Addr().(*net.TCPAddr).Port
-	ln.Close()
+	_ = ln.Close()
 
 	logger := zaptest.NewLogger(t)
 	srv := mocksmsc.NewServer(mocksmsc.Config{

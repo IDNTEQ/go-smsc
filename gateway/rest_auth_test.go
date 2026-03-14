@@ -204,7 +204,7 @@ func TestAPIKeyAuthMiddleware_ValidKey(t *testing.T) {
 			t.Errorf("expected label 'middleware-test', got %q", ak.Label)
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	}))
 
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)

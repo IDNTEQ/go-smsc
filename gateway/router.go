@@ -149,7 +149,7 @@ func (r *Router) LoadBlacklist(path string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	count := 0
 	scanner := bufio.NewScanner(f)
@@ -253,7 +253,7 @@ func (r *Router) HandleSubmit(connID string, seqNum uint32, body []byte) {
 			)
 			r.metrics.BlacklistedTotal.Inc()
 			if c != nil {
-				c.SendSubmitSMResp(seqNum, smpp.StatusSubmitFail, "")
+				_ = c.SendSubmitSMResp(seqNum, smpp.StatusSubmitFail, "")
 			}
 			return
 		}
@@ -268,7 +268,7 @@ func (r *Router) HandleSubmit(connID string, seqNum uint32, body []byte) {
 				zap.Int("limit", r.rateLimitTPS),
 			)
 			r.metrics.ThrottledTotal.Inc()
-			c.SendSubmitSMResp(seqNum, smpp.StatusThrottled, "")
+			_ = c.SendSubmitSMResp(seqNum, smpp.StatusThrottled, "")
 			return
 		}
 		c.RecordSubmit()
@@ -284,7 +284,7 @@ func (r *Router) HandleSubmit(connID string, seqNum uint32, body []byte) {
 
 	// Immediately ACK the engine — store-and-forward pattern.
 	if c != nil {
-		c.SendSubmitSMResp(seqNum, smpp.StatusOK, gwMsgID)
+		_ = c.SendSubmitSMResp(seqNum, smpp.StatusOK, gwMsgID)
 	}
 
 	r.metrics.SubmitTotal.WithLabelValues("accepted").Inc()
@@ -437,7 +437,7 @@ func (r *Router) forwardSubmitRaw(c *Connection, gwMsgID, destAddr, sourceAddr s
 
 		// Update durable status for REST query.
 		if connID == "rest-api" {
-			r.store.SetMessageStatus(&MessageStatus{
+			_ = r.store.SetMessageStatus(&MessageStatus{
 				GwMsgID:   gwMsgID,
 				To:        destAddr,
 				From:      sourceAddr,
@@ -524,7 +524,7 @@ func (r *Router) handleDLR(sourceAddr, destAddr string, esmClass byte, payload [
 
 		// Update durable status for REST query.
 		if r.store != nil {
-			r.store.SetMessageStatus(&MessageStatus{
+			_ = r.store.SetMessageStatus(&MessageStatus{
 				GwMsgID:   corr.GwMsgID,
 				To:        corr.MSISDN,
 				Status:    "delivered",
@@ -887,7 +887,7 @@ func (r *Router) sendSyntheticDLR(connID, gwMsgID, destAddr, sourceAddr string) 
 	// REST-originated: update durable status, fire callback, no SMPP delivery.
 	if connID == "rest-api" {
 		if r.store != nil {
-			r.store.SetMessageStatus(&MessageStatus{
+			_ = r.store.SetMessageStatus(&MessageStatus{
 				GwMsgID:   gwMsgID,
 				To:        destAddr,
 				From:      sourceAddr,
@@ -1007,7 +1007,7 @@ func (r *Router) drainSubmitRetries() {
 
 			// Update durable status for REST query.
 			if p.ConnID == "rest-api" {
-				r.store.SetMessageStatus(&MessageStatus{
+				_ = r.store.SetMessageStatus(&MessageStatus{
 					GwMsgID:   p.GwMsgID,
 					To:        p.MSISDN,
 					From:      p.SourceAddr,

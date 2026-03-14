@@ -63,7 +63,7 @@ func TestSMPPRoundTrip(t *testing.T) {
 	if err := pool.Connect(ctx); err != nil {
 		t.Fatalf("pool connect: %v", err)
 	}
-	defer pool.Close()
+	defer func() { _ = pool.Close() }()
 
 	// Wait for bind
 	time.Sleep(200 * time.Millisecond)
@@ -143,7 +143,7 @@ func TestSMPPBatchSubmit(t *testing.T) {
 	if err := pool.Connect(ctx); err != nil {
 		t.Fatalf("pool connect: %v", err)
 	}
-	defer pool.Close()
+	defer func() { _ = pool.Close() }()
 
 	time.Sleep(200 * time.Millisecond)
 

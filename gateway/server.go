@@ -59,7 +59,7 @@ func (s *Server) Start() error {
 
 	tlsCfg, err := LoadTLSConfig(s.cfg.TLSCertFile, s.cfg.TLSKeyFile)
 	if err != nil {
-		listener.Close()
+		_ = listener.Close()
 		return fmt.Errorf("TLS config: %w", err)
 	}
 	if tlsCfg != nil {
@@ -79,7 +79,7 @@ func (s *Server) Start() error {
 func (s *Server) Stop() {
 	close(s.done)
 	if s.listener != nil {
-		s.listener.Close()
+		_ = s.listener.Close()
 	}
 
 	// Graceful drain: wait for in-flight operations to complete.
@@ -107,7 +107,7 @@ func (s *Server) Stop() {
 
 	s.connMu.Lock()
 	for _, c := range s.conns {
-		c.Close()
+		_ = c.Close()
 	}
 	s.conns = make(map[string]*Connection)
 	s.connMu.Unlock()
@@ -165,7 +165,7 @@ func (s *Server) handleConnection(c *Connection) {
 			s.metrics.NorthboundConnections.Set(float64(s.connectionCount()))
 			s.logger.Info("engine disconnected", zap.String("conn_id", c.ID))
 		}
-		c.Close()
+		_ = c.Close()
 	}()
 
 	c.ReadLoop(
@@ -194,7 +194,7 @@ func (s *Server) onBind(c *Connection, systemID string) {
 		s.logger.Info("replacing existing connection",
 			zap.String("conn_id", systemID),
 		)
-		old.Close()
+		_ = old.Close()
 	}
 	s.conns[systemID] = c
 	delete(s.disconnects, systemID) // Clear disconnect timestamp
@@ -390,7 +390,7 @@ func (s *Server) RunStaleChecker(ctx context.Context) {
 					zap.String("conn_id", c.ID),
 					zap.Duration("idle", now.Sub(c.LastActivity())),
 				)
-				c.Close()
+				_ = c.Close()
 			}
 		case <-ctx.Done():
 			return

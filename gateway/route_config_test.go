@@ -16,7 +16,7 @@ func openTestStore(t *testing.T) *MessageStore {
 	if err != nil {
 		t.Fatalf("NewMessageStore: %v", err)
 	}
-	t.Cleanup(func() { store.Close() })
+	t.Cleanup(func() { _ = store.Close() })
 	return store
 }
 
@@ -469,9 +469,9 @@ func TestMessageStore_ScanPrefix(t *testing.T) {
 	store := openTestStore(t)
 
 	// Write keys in two namespaces.
-	store.SetJSON("ns1:a", "alpha")
-	store.SetJSON("ns1:b", "bravo")
-	store.SetJSON("ns2:c", "charlie")
+	_ = store.SetJSON("ns1:a", "alpha")
+	_ = store.SetJSON("ns1:b", "bravo")
+	_ = store.SetJSON("ns2:c", "charlie")
 
 	var keys []string
 	err := store.ScanPrefix("ns1:", func(key string, data []byte) error {
@@ -502,9 +502,9 @@ func TestRouteConfig_NamespaceIsolation(t *testing.T) {
 	rc := NewRouteConfigStore(store)
 
 	// Save one of each type.
-	rc.SaveMTRoute(&MTRoute{Prefix: "+234", Strategy: "failover", Pools: []RoutePool{{Name: "p1"}}})
-	rc.SaveMORoute(&MORoute{DestPattern: "12345", Target: MOTarget{Type: "http", CallbackURL: "https://example.com"}, Priority: 10})
-	rc.SavePoolConfig(&SouthboundPoolConfig{Name: "pool-x", Host: "x.example.com", Port: 2775})
+	_ = rc.SaveMTRoute(&MTRoute{Prefix: "+234", Strategy: "failover", Pools: []RoutePool{{Name: "p1"}}})
+	_ = rc.SaveMORoute(&MORoute{DestPattern: "12345", Target: MOTarget{Type: "http", CallbackURL: "https://example.com"}, Priority: 10})
+	_ = rc.SavePoolConfig(&SouthboundPoolConfig{Name: "pool-x", Host: "x.example.com", Port: 2775})
 
 	// Each Load should only return its own type.
 	mtRoutes, _ := rc.LoadAllMTRoutes()

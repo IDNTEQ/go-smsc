@@ -12,6 +12,10 @@ Plus a standalone binary: **`cmd/smsc-gateway/`**
 
 [![CI](https://github.com/IDNTEQ/go-smsc/actions/workflows/ci.yml/badge.svg)](https://github.com/IDNTEQ/go-smsc/actions/workflows/ci.yml)
 
+## Requirements
+
+- Go 1.26 or later
+
 ## Install
 
 ```bash
