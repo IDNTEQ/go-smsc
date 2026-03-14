@@ -131,16 +131,9 @@ func WriteCStringBytes(s string) []byte {
 }
 
 // EncodeBindTransceiver builds the body of a bind_transceiver PDU.
+// This is a convenience wrapper around EncodeBind for backward compatibility.
 func EncodeBindTransceiver(systemID, password, systemType string) []byte {
-	var buf bytes.Buffer
-	writeCString(&buf, systemID)       // system_id
-	writeCString(&buf, password)       // password
-	writeCString(&buf, systemType)     // system_type
-	buf.WriteByte(0x34)                // interface_version = 3.4
-	buf.WriteByte(0x00)                // addr_ton
-	buf.WriteByte(0x00)                // addr_npi
-	writeCString(&buf, "")             // address_range
-	return buf.Bytes()
+	return EncodeBind(BindTransceiver, systemID, password, systemType, 0x34)
 }
 
 // EncodeSubmitSM builds the body of a submit_sm PDU with OTA-appropriate fields.

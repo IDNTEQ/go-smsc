@@ -19,8 +19,36 @@ func MandatoryBodyLen(commandID uint32, body []byte) int {
 	case CmdBindTransceiverResp, CmdBindTransmitterResp, CmdBindReceiverResp:
 		return mandatoryLenCStringOnly(body)
 
+	case CmdQuerySM:
+		return mandatoryLenQuerySM(body)
+
+	case CmdQuerySMResp:
+		return mandatoryLenQuerySMResp(body)
+
+	case CmdCancelSM:
+		return mandatoryLenCancelSM(body)
+
+	case CmdReplaceSM:
+		return mandatoryLenReplaceSM(body)
+
+	case CmdDataSM:
+		return mandatoryLenDataSM(body)
+
+	case CmdDataSMResp:
+		return mandatoryLenCStringOnly(body)
+
+	case CmdAlertNotification:
+		return mandatoryLenAlertNotification(body)
+
+	case CmdCancelSMResp, CmdReplaceSMResp:
+		return 0
+
 	case CmdEnquireLink, CmdEnquireLinkResp, CmdUnbind, CmdUnbindResp, CmdGenericNack:
 		return 0
+
+	case CmdSubmitMulti, CmdSubmitMultiResp:
+		// Complex variable-length dest list; skip TLV extraction for now.
+		return -1
 
 	default:
 		return -1
@@ -181,6 +209,251 @@ func skipCString(body []byte, offset int) int {
 	}
 	// No null terminator found — body is truncated.
 	return -1
+}
+
+// mandatoryLenQuerySM calculates the mandatory field length for query_sm.
+// Layout: message_id(C) + source_addr_ton(1) + source_addr_npi(1) + source_addr(C)
+func mandatoryLenQuerySM(body []byte) int {
+	offset := 0
+	n := len(body)
+
+	// message_id (C-string)
+	offset = skipCString(body, offset)
+	if offset < 0 {
+		return -1
+	}
+
+	// source_addr_ton(1) + source_addr_npi(1)
+	if offset+2 > n {
+		return -1
+	}
+	offset += 2
+
+	// source_addr (C-string)
+	offset = skipCString(body, offset)
+	if offset < 0 {
+		return -1
+	}
+
+	return offset
+}
+
+// mandatoryLenQuerySMResp calculates the mandatory field length for query_sm_resp.
+// Layout: message_id(C) + final_date(C) + message_state(1) + error_code(1)
+func mandatoryLenQuerySMResp(body []byte) int {
+	offset := 0
+	n := len(body)
+
+	// message_id (C-string)
+	offset = skipCString(body, offset)
+	if offset < 0 {
+		return -1
+	}
+
+	// final_date (C-string)
+	offset = skipCString(body, offset)
+	if offset < 0 {
+		return -1
+	}
+
+	// message_state(1) + error_code(1)
+	if offset+2 > n {
+		return -1
+	}
+	offset += 2
+
+	return offset
+}
+
+// mandatoryLenCancelSM calculates the mandatory field length for cancel_sm.
+// Layout: service_type(C) + message_id(C) + source_addr_ton(1) + source_addr_npi(1)
+//
+//	+ source_addr(C) + dest_addr_ton(1) + dest_addr_npi(1) + destination_addr(C)
+func mandatoryLenCancelSM(body []byte) int {
+	offset := 0
+	n := len(body)
+
+	// service_type (C-string)
+	offset = skipCString(body, offset)
+	if offset < 0 {
+		return -1
+	}
+
+	// message_id (C-string)
+	offset = skipCString(body, offset)
+	if offset < 0 {
+		return -1
+	}
+
+	// source_addr_ton(1) + source_addr_npi(1)
+	if offset+2 > n {
+		return -1
+	}
+	offset += 2
+
+	// source_addr (C-string)
+	offset = skipCString(body, offset)
+	if offset < 0 {
+		return -1
+	}
+
+	// dest_addr_ton(1) + dest_addr_npi(1)
+	if offset+2 > n {
+		return -1
+	}
+	offset += 2
+
+	// destination_addr (C-string)
+	offset = skipCString(body, offset)
+	if offset < 0 {
+		return -1
+	}
+
+	return offset
+}
+
+// mandatoryLenReplaceSM calculates the mandatory field length for replace_sm.
+// Layout: message_id(C) + source_addr_ton(1) + source_addr_npi(1) + source_addr(C)
+//
+//	+ schedule_delivery_time(C) + validity_period(C)
+//	+ registered_delivery(1) + sm_default_msg_id(1) + sm_length(1) + short_message(sm_length)
+func mandatoryLenReplaceSM(body []byte) int {
+	offset := 0
+	n := len(body)
+
+	// message_id (C-string)
+	offset = skipCString(body, offset)
+	if offset < 0 {
+		return -1
+	}
+
+	// source_addr_ton(1) + source_addr_npi(1)
+	if offset+2 > n {
+		return -1
+	}
+	offset += 2
+
+	// source_addr (C-string)
+	offset = skipCString(body, offset)
+	if offset < 0 {
+		return -1
+	}
+
+	// schedule_delivery_time (C-string)
+	offset = skipCString(body, offset)
+	if offset < 0 {
+		return -1
+	}
+
+	// validity_period (C-string)
+	offset = skipCString(body, offset)
+	if offset < 0 {
+		return -1
+	}
+
+	// registered_delivery(1) + sm_default_msg_id(1)
+	if offset+2 > n {
+		return -1
+	}
+	offset += 2
+
+	// sm_length(1)
+	if offset >= n {
+		return -1
+	}
+	smLen := int(body[offset])
+	offset++
+
+	// short_message(sm_length)
+	if offset+smLen > n {
+		return -1
+	}
+	offset += smLen
+
+	return offset
+}
+
+// mandatoryLenDataSM calculates the mandatory field length for data_sm.
+// Layout: service_type(C) + source_addr_ton(1) + source_addr_npi(1) + source_addr(C)
+//
+//	+ dest_addr_ton(1) + dest_addr_npi(1) + destination_addr(C)
+//	+ esm_class(1) + registered_delivery(1) + data_coding(1)
+func mandatoryLenDataSM(body []byte) int {
+	offset := 0
+	n := len(body)
+
+	// service_type (C-string)
+	offset = skipCString(body, offset)
+	if offset < 0 {
+		return -1
+	}
+
+	// source_addr_ton(1) + source_addr_npi(1)
+	if offset+2 > n {
+		return -1
+	}
+	offset += 2
+
+	// source_addr (C-string)
+	offset = skipCString(body, offset)
+	if offset < 0 {
+		return -1
+	}
+
+	// dest_addr_ton(1) + dest_addr_npi(1)
+	if offset+2 > n {
+		return -1
+	}
+	offset += 2
+
+	// destination_addr (C-string)
+	offset = skipCString(body, offset)
+	if offset < 0 {
+		return -1
+	}
+
+	// esm_class(1) + registered_delivery(1) + data_coding(1)
+	if offset+3 > n {
+		return -1
+	}
+	offset += 3
+
+	return offset
+}
+
+// mandatoryLenAlertNotification calculates the mandatory field length for
+// alert_notification. Layout:
+// source_addr_ton(1) + source_addr_npi(1) + source_addr(C)
+// + esme_addr_ton(1) + esme_addr_npi(1) + esme_addr(C)
+func mandatoryLenAlertNotification(body []byte) int {
+	offset := 0
+	n := len(body)
+
+	// source_addr_ton(1) + source_addr_npi(1)
+	if offset+2 > n {
+		return -1
+	}
+	offset += 2
+
+	// source_addr (C-string)
+	offset = skipCString(body, offset)
+	if offset < 0 {
+		return -1
+	}
+
+	// esme_addr_ton(1) + esme_addr_npi(1)
+	if offset+2 > n {
+		return -1
+	}
+	offset += 2
+
+	// esme_addr (C-string)
+	offset = skipCString(body, offset)
+	if offset < 0 {
+		return -1
+	}
+
+	return offset
 }
 
 // ExtractTLVs is a convenience function that determines the TLV boundary
