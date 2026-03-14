@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -192,6 +193,19 @@ func (pm *PoolManager) Names() []string {
 	for n := range pm.pools {
 		names = append(names, n)
 	}
+	return names
+}
+
+// PoolNames returns a sorted list of all managed pool names.
+func (pm *PoolManager) PoolNames() []string {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	names := make([]string, 0, len(pm.pools))
+	for n := range pm.pools {
+		names = append(names, n)
+	}
+	sort.Strings(names)
 	return names
 }
 

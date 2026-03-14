@@ -90,6 +90,15 @@ type Router struct {
 
 	// MSISDN blacklist: submits to these numbers are rejected.
 	blacklist *ShardMap[struct{}]
+
+	// Atomic activity counters for the admin dashboard (read-side).
+	// These are incremented alongside the Prometheus counters which are
+	// write-only from the client_golang perspective.
+	totalSubmits   atomic.Int64
+	totalDLRs      atomic.Int64
+	totalMO        atomic.Int64
+	totalForwarded atomic.Int64
+	totalThrottled atomic.Int64
 }
 
 // NewRouter creates a router instance. Server and southbound pool are set
@@ -268,6 +277,7 @@ func (r *Router) HandleSubmit(connID string, seqNum uint32, body []byte) {
 				zap.Int("limit", r.rateLimitTPS),
 			)
 			r.metrics.ThrottledTotal.Inc()
+			r.totalThrottled.Add(1)
 			_ = c.SendSubmitSMResp(seqNum, smpp.StatusThrottled, "")
 			return
 		}
@@ -288,6 +298,7 @@ func (r *Router) HandleSubmit(connID string, seqNum uint32, body []byte) {
 	}
 
 	r.metrics.SubmitTotal.WithLabelValues("accepted").Inc()
+	r.totalSubmits.Add(1)
 	r.metrics.SubmitLatency.Observe(time.Since(start).Seconds())
 
 	// Store the correlation with gateway message ID.
@@ -331,6 +342,7 @@ func (r *Router) HandleSubmit(connID string, seqNum uint32, body []byte) {
 			zap.String("gw_msg_id", gwMsgID),
 		)
 		r.metrics.ThrottledTotal.Inc()
+		r.totalThrottled.Add(1)
 		if c != nil {
 			c.InFlightAdd(-1)
 		}
@@ -449,6 +461,7 @@ func (r *Router) forwardSubmitRaw(c *Connection, gwMsgID, destAddr, sourceAddr s
 	}
 
 	r.metrics.SubmitTotal.WithLabelValues("forwarded").Inc()
+	r.totalForwarded.Add(1)
 
 	r.logger.Debug("submit forwarded",
 		zap.String("gw_msg_id", gwMsgID),
@@ -478,6 +491,8 @@ func (r *Router) HandleDeliver(sourceAddr, destAddr string, esmClass byte, paylo
 // It translates the SMSC message ID to the gateway message ID that the
 // engine knows about.
 func (r *Router) handleDLR(sourceAddr, destAddr string, esmClass byte, payload []byte, start time.Time) {
+	r.totalDLRs.Add(1)
+
 	// Parse DLR receipt to extract the downstream SMSC's message_id.
 	receipt := smpp.ParseDLRReceipt(string(payload))
 	if receipt == nil {
@@ -568,6 +583,8 @@ func (r *Router) handleDLR(sourceAddr, destAddr string, esmClass byte, payload [
 // handleMO routes an MO deliver_sm to the engine based on MO route table
 // or MSISDN affinity fallback.
 func (r *Router) handleMO(sourceAddr, destAddr string, esmClass byte, payload []byte, start time.Time) {
+	r.totalMO.Add(1)
+
 	// Check MO route table first.
 	if r.moRoutes != nil {
 		target, _ := r.moRoutes.Resolve(sourceAddr, destAddr)
@@ -849,6 +866,35 @@ func (r *Router) CleanupCorrelations(ctx context.Context, maxAge time.Duration) 
 	}
 }
 
+// AffinitySize returns the number of MSISDN affinity entries.
+func (r *Router) AffinitySize() int { return r.msisdnAffinity.Len() }
+
+// CorrelationSize returns the number of pending SMSC correlations.
+func (r *Router) CorrelationSize() int { return r.smscCorrelation.Len() }
+
+// SubmitRetryCount returns the number of pending submit retries from the store.
+func (r *Router) SubmitRetryCount() int {
+	if r.store != nil {
+		return r.store.PendingSubmitRetryCount()
+	}
+	return 0
+}
+
+// TotalSubmits returns the total number of accepted submits since start.
+func (r *Router) TotalSubmits() int64 { return r.totalSubmits.Load() }
+
+// TotalDLRs returns the total number of DLRs received since start.
+func (r *Router) TotalDLRs() int64 { return r.totalDLRs.Load() }
+
+// TotalMO returns the total number of MO messages received since start.
+func (r *Router) TotalMO() int64 { return r.totalMO.Load() }
+
+// TotalForwarded returns the total number of successfully forwarded submits since start.
+func (r *Router) TotalForwarded() int64 { return r.totalForwarded.Load() }
+
+// TotalThrottled returns the total number of throttled submits since start.
+func (r *Router) TotalThrottled() int64 { return r.totalThrottled.Load() }
+
 // enqueueSubmitRetryOrFail either queues a failed submit for retry, or sends
 // a synthetic failure DLR if retries are exhausted. This ensures the engine
 // always learns about delivery failures — without this, cards would stay
@@ -1019,6 +1065,7 @@ func (r *Router) drainSubmitRetries() {
 		}
 
 		r.metrics.SubmitTotal.WithLabelValues("forwarded").Inc()
+		r.totalForwarded.Add(1)
 
 		r.logger.Debug("submit retry succeeded",
 			zap.String("gw_msg_id", p.GwMsgID),

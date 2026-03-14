@@ -350,6 +350,11 @@ func (s *MessageStore) PendingRetryCount() int {
 	return int(s.retryCount.Load())
 }
 
+// PendingSubmitRetryCount returns the approximate number of entries in the submit retry queue. O(1).
+func (s *MessageStore) PendingSubmitRetryCount() int {
+	return int(s.submitRetryCount.Load())
+}
+
 // Cleanup removes submit records older than ttl from both msg: and gw: prefixes
 // using a Pebble batch for efficient deletion.
 func (s *MessageStore) Cleanup(ttl time.Duration) (int, error) {

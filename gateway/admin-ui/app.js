@@ -108,6 +108,20 @@ function LoginPage() {
 // Dashboard page — real-time WebSocket updates
 // ---------------------------------------------------------------------------
 
+function fmt(n) {
+    return (n || 0).toLocaleString();
+}
+
+function StatCard({ value, label, sublabel, title }) {
+    return html`
+        <div class="stat-card" title=${title || ''}>
+            <div class="value">${fmt(value)}</div>
+            <div class="label">${label}</div>
+            ${sublabel && html`<div class="sublabel">${sublabel}</div>`}
+        </div>
+    `;
+}
+
 function DashboardPage() {
     const [stats, setStats] = useState(null);
 
@@ -134,7 +148,13 @@ function DashboardPage() {
         ws.onerror = () => {};
         ws.onclose = () => {};
 
-        return () => ws.close();
+        // Polling fallback: refresh stats every 3 seconds in case WebSocket
+        // is not available or disconnects.
+        const interval = setInterval(() => {
+            api('GET', '/admin/api/stats').then(setStats).catch(() => {});
+        }, 3000);
+
+        return () => { ws.close(); clearInterval(interval); };
     }, []);
 
     if (!stats) return html`<p aria-busy="true">Loading dashboard...</p>`;
@@ -143,23 +163,38 @@ function DashboardPage() {
 
     return html`
         <h2>Dashboard</h2>
+
         <div class="dashboard-grid">
-            <div class="stat-card">
-                <div class="value">${stats.connections || 0}</div>
-                <div class="label">Northbound Connections</div>
-            </div>
-            <div class="stat-card">
-                <div class="value">${stats.store_size || 0}</div>
-                <div class="label">Store Size</div>
-            </div>
-            <div class="stat-card">
-                <div class="value">${stats.retry_queue || 0}</div>
-                <div class="label">Retry Queue</div>
-            </div>
-            <div class="stat-card">
-                <div class="value">${pools.length}</div>
-                <div class="label">Pools</div>
-            </div>
+            <${StatCard} value=${stats.connections} label="Connections"
+                sublabel="northbound SMPP" title="Active engine connections" />
+            <${StatCard} value=${stats.total_submits} label="Submits"
+                sublabel="accepted total" title="Total submit_sm messages accepted" />
+            <${StatCard} value=${stats.total_dlrs} label="DLRs"
+                sublabel="received total" title="Total delivery receipts received" />
+            <${StatCard} value=${stats.total_mo} label="MO Messages"
+                sublabel="received total" title="Total mobile-originated messages" />
+        </div>
+
+        <div class="dashboard-grid">
+            <${StatCard} value=${stats.total_forwarded} label="Forwarded"
+                sublabel="to downstream SMSC" title="Total submits successfully forwarded" />
+            <${StatCard} value=${stats.total_throttled} label="Throttled"
+                sublabel="rate limited" title="Total submits rejected by rate limiter" />
+            <${StatCard} value=${stats.affinity_size} label="Affinity Table"
+                sublabel="MSISDN mappings" title="MSISDN-to-connection affinity entries" />
+            <${StatCard} value=${stats.correlation_size} label="Correlations"
+                sublabel="pending DLR maps" title="SMSC message ID to gateway ID mappings" />
+        </div>
+
+        <div class="dashboard-grid">
+            <${StatCard} value=${stats.store_size} label="Store Size"
+                sublabel="messages cached" title="Messages persisted in Pebble store" />
+            <${StatCard} value=${stats.retry_queue} label="Retry Queue"
+                sublabel="DLR/MO pending" title="Northbound deliveries pending retry" />
+            <${StatCard} value=${stats.submit_retries} label="Submit Retries"
+                sublabel="southbound pending" title="Southbound submits pending retry" />
+            <${StatCard} value=${pools.length} label="Pools"
+                sublabel="configured" title="Number of southbound SMSC pools" />
         </div>
 
         <h3>Pool Health</h3>
@@ -254,11 +289,14 @@ function RoutesPage() {
     const [mtRoutes, setMTRoutes] = useState([]);
     const [moRoutes, setMORoutes] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [poolNames, setPoolNames] = useState([]);
+    const [connections, setConnections] = useState([]);
 
     // MT form state
     const [mtPrefix, setMTPrefix] = useState('');
     const [mtStrategy, setMTStrategy] = useState('failover');
     const [mtPools, setMTPools] = useState('');
+    const [mtSelectedPools, setMTSelectedPools] = useState([]);
 
     // MO form state
     const [moDestPattern, setMODestPattern] = useState('');
@@ -273,18 +311,37 @@ function RoutesPage() {
         Promise.all([
             api('GET', '/admin/api/routes/mt').then(d => setMTRoutes(d || [])),
             api('GET', '/admin/api/routes/mo').then(d => setMORoutes(d || [])),
+            api('GET', '/admin/api/stats').then(d => setPoolNames(d.pool_names || [])),
+            api('GET', '/admin/api/connections').then(d => setConnections(d || [])),
         ]).catch(() => {}).finally(() => setLoading(false));
     }, []);
 
     useEffect(() => { refresh(); }, []);
 
+    const togglePool = (name) => {
+        setMTSelectedPools(prev =>
+            prev.includes(name)
+                ? prev.filter(n => n !== name)
+                : [...prev, name]
+        );
+    };
+
     const addMTRoute = async (e) => {
         e.preventDefault();
-        // Parse pools: "pool1,pool2" or "pool1:0.5,pool2:1.0" for cost
-        const pools = mtPools.split(',').map(s => s.trim()).filter(Boolean).map(s => {
-            const parts = s.split(':');
-            return { name: parts[0].trim(), cost: parts[1] ? parseFloat(parts[1]) : 0 };
-        });
+        // Build pool list from checkboxes if pools exist, otherwise parse text input
+        let pools;
+        if (poolNames.length > 0) {
+            pools = mtSelectedPools.map(name => ({ name, cost: 0 }));
+        } else {
+            pools = mtPools.split(',').map(s => s.trim()).filter(Boolean).map(s => {
+                const parts = s.split(':');
+                return { name: parts[0].trim(), cost: parts[1] ? parseFloat(parts[1]) : 0 };
+            });
+        }
+        if (pools.length === 0) {
+            showToast('Select at least one pool', 'error');
+            return;
+        }
         try {
             await api('POST', '/admin/api/routes/mt', {
                 prefix: mtPrefix,
@@ -292,7 +349,7 @@ function RoutesPage() {
                 pools,
             });
             showToast('MT route created');
-            setMTPrefix(''); setMTPools('');
+            setMTPrefix(''); setMTPools(''); setMTSelectedPools([]);
             refresh();
         } catch (err) {
             showToast(err.message, 'error');
@@ -350,29 +407,47 @@ function RoutesPage() {
 
         <!-- MT Routes -->
         <h3>MT Routes (Outbound)</h3>
-        <details open>
-            <summary>Add MT Route</summary>
-            <form class="inline-form" onSubmit=${addMTRoute}>
-                <label>Prefix
-                    <input type="text" value=${mtPrefix} placeholder="e.g. 234 or *"
-                           onInput=${e => setMTPrefix(e.target.value)} required
-                           style="width: 120px" />
-                </label>
-                <label>Strategy
-                    <select value=${mtStrategy} onChange=${e => setMTStrategy(e.target.value)}>
-                        <option value="failover">Failover</option>
-                        <option value="round_robin">Round Robin</option>
-                        <option value="least_cost">Least Cost</option>
-                    </select>
-                </label>
-                <label>Pools (comma-sep, name or name:cost)
-                    <input type="text" value=${mtPools} placeholder="e.g. pool-a,pool-b"
-                           onInput=${e => setMTPools(e.target.value)} required
-                           style="width: 280px" />
-                </label>
-                <button type="submit">Add</button>
+        <div class="form-card">
+            <h4>Add MT Route</h4>
+            <form onSubmit=${addMTRoute}>
+                <div class="form-grid">
+                    <label>Prefix
+                        <input type="text" value=${mtPrefix} placeholder="e.g. 234 or *"
+                               onInput=${e => setMTPrefix(e.target.value)} required />
+                    </label>
+                    <label>Strategy
+                        <select value=${mtStrategy} onChange=${e => setMTStrategy(e.target.value)}>
+                            <option value="failover">Failover</option>
+                            <option value="round_robin">Round Robin</option>
+                            <option value="least_cost">Least Cost</option>
+                        </select>
+                    </label>
+                </div>
+                ${poolNames.length > 0
+                    ? html`
+                        <label>Pools</label>
+                        <div class="checkbox-group">
+                            ${poolNames.map(name => html`
+                                <label class="checkbox-label" key=${name}>
+                                    <input type="checkbox"
+                                           checked=${mtSelectedPools.includes(name)}
+                                           onChange=${() => togglePool(name)} />
+                                    ${name}
+                                </label>
+                            `)}
+                        </div>
+                    `
+                    : html`
+                        <label>Pools (comma-separated, name or name:cost)
+                            <input type="text" value=${mtPools}
+                                   placeholder="e.g. pool-a, pool-b:0.05"
+                                   onInput=${e => setMTPools(e.target.value)} required />
+                        </label>
+                    `
+                }
+                <button type="submit">Add MT Route</button>
             </form>
-        </details>
+        </div>
 
         ${mtRoutes.length === 0 && !loading
             ? html`<p>No MT routes configured.</p>`
@@ -408,46 +483,56 @@ function RoutesPage() {
         }
 
         <!-- MO Routes -->
-        <h3 style="margin-top: 2rem">MO Routes (Inbound)</h3>
-        <details open>
-            <summary>Add MO Route</summary>
-            <form class="inline-form" onSubmit=${addMORoute}>
-                <label>Dest Pattern
-                    <input type="text" value=${moDestPattern} placeholder="e.g. 12345 or 123*"
-                           onInput=${e => setMODestPattern(e.target.value)} required
-                           style="width: 140px" />
-                </label>
-                <label>Source Prefix (optional)
-                    <input type="text" value=${moSourcePrefix} placeholder="e.g. 234"
-                           onInput=${e => setMOSourcePrefix(e.target.value)}
-                           style="width: 120px" />
-                </label>
-                <label>Target Type
-                    <select value=${moTargetType} onChange=${e => setMOTargetType(e.target.value)}>
-                        <option value="http">HTTP Webhook</option>
-                        <option value="smpp">SMPP Connection</option>
-                    </select>
-                </label>
-                ${moTargetType === 'smpp'
-                    ? html`<label>Connection ID
-                        <input type="text" value=${moTargetConnID}
-                               onInput=${e => setMOTargetConnID(e.target.value)} required
-                               style="width: 160px" />
-                      </label>`
-                    : html`<label>Callback URL
-                        <input type="url" value=${moTargetURL} placeholder="https://..."
-                               onInput=${e => setMOTargetURL(e.target.value)} required
-                               style="width: 260px" />
-                      </label>`
-                }
+        <h3 style="margin-top: 2.5rem">MO Routes (Inbound)</h3>
+        <div class="form-card">
+            <h4>Add MO Route</h4>
+            <form onSubmit=${addMORoute}>
+                <div class="form-grid">
+                    <label>Dest Pattern
+                        <input type="text" value=${moDestPattern} placeholder="e.g. 12345 or 123*"
+                               onInput=${e => setMODestPattern(e.target.value)} required />
+                    </label>
+                    <label>Source Prefix (optional)
+                        <input type="text" value=${moSourcePrefix} placeholder="e.g. 234"
+                               onInput=${e => setMOSourcePrefix(e.target.value)} />
+                    </label>
+                </div>
+                <div class="form-grid">
+                    <label>Target Type
+                        <select value=${moTargetType} onChange=${e => setMOTargetType(e.target.value)}>
+                            <option value="http">HTTP Webhook</option>
+                            <option value="smpp">SMPP Connection</option>
+                        </select>
+                    </label>
+                    ${moTargetType === 'smpp'
+                        ? html`<label>Connection ID
+                            ${connections.length > 0
+                                ? html`<select value=${moTargetConnID}
+                                               onChange=${e => setMOTargetConnID(e.target.value)}>
+                                    <option value="">-- select connection --</option>
+                                    ${connections.map(c => html`
+                                        <option key=${c.id} value=${c.id}>${c.id} (${c.system_id})</option>
+                                    `)}
+                                  </select>`
+                                : html`<input type="text" value=${moTargetConnID}
+                                              placeholder="connection ID"
+                                              onInput=${e => setMOTargetConnID(e.target.value)} required />`
+                            }
+                          </label>`
+                        : html`<label>Callback URL
+                            <input type="url" value=${moTargetURL} placeholder="https://..."
+                                   onInput=${e => setMOTargetURL(e.target.value)} required />
+                          </label>`
+                    }
+                </div>
                 <label>Priority
                     <input type="number" value=${moPriority}
                            onInput=${e => setMOPriority(e.target.value)}
-                           style="width: 80px" />
+                           style="width: 120px" />
                 </label>
-                <button type="submit">Add</button>
+                <button type="submit">Add MO Route</button>
             </form>
-        </details>
+        </div>
 
         ${moRoutes.length === 0 && !loading
             ? html`<p>No MO routes configured.</p>`

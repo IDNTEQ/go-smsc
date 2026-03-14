@@ -111,8 +111,17 @@ func (a *AdminAPI) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 func (a *AdminAPI) handleStats(w http.ResponseWriter, r *http.Request) {
 	stats := map[string]any{
-		"pools":       a.poolManager.AllHealth(),
-		"connections": a.server.ConnectionCount(),
+		"pools":            a.poolManager.AllHealth(),
+		"connections":      a.server.ConnectionCount(),
+		"total_submits":    a.router.TotalSubmits(),
+		"total_dlrs":       a.router.TotalDLRs(),
+		"total_mo":         a.router.TotalMO(),
+		"total_forwarded":  a.router.TotalForwarded(),
+		"total_throttled":  a.router.TotalThrottled(),
+		"affinity_size":    a.router.AffinitySize(),
+		"correlation_size": a.router.CorrelationSize(),
+		"submit_retries":   a.router.SubmitRetryCount(),
+		"pool_names":       a.poolManager.PoolNames(),
 	}
 	if a.router.store != nil {
 		stats["store_size"] = a.router.store.MessageCount()
