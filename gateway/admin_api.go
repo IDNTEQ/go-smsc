@@ -218,8 +218,8 @@ func (a *AdminAPI) handleDeleteMORoute(w http.ResponseWriter, r *http.Request) {
 // --- Pools CRUD ---
 
 func (a *AdminAPI) handleListPools(w http.ResponseWriter, r *http.Request) {
-	health := a.poolManager.AllHealth()
-	writeJSON(w, http.StatusOK, health)
+	entries := a.poolManager.ListWithHealth()
+	writeJSON(w, http.StatusOK, entries)
 }
 
 func (a *AdminAPI) handleCreatePool(w http.ResponseWriter, r *http.Request) {

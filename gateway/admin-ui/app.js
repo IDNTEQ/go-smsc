@@ -1,5 +1,5 @@
 import { h, render } from 'https://esm.sh/preact@10.19.3';
-import { useState, useEffect, useCallback } from 'https://esm.sh/preact@10.19.3/hooks';
+import { useState, useEffect, useCallback, useRef } from 'https://esm.sh/preact@10.19.3/hooks';
 import htm from 'https://esm.sh/htm@3.1.1';
 
 const html = htm.bind(h);
@@ -54,6 +54,41 @@ function showToast(message, type = '') {
 }
 
 // ---------------------------------------------------------------------------
+// Shared helpers
+// ---------------------------------------------------------------------------
+
+function fmt(n) {
+    return (n || 0).toLocaleString();
+}
+
+function statusBadge(status) {
+    const colors = {
+        delivered: 'green', forwarded: 'blue', accepted: 'yellow',
+        failed: 'red', rejected: 'red', healthy: 'green', unhealthy: 'red',
+    };
+    const color = colors[status] || 'gray';
+    return html`<span class="status-badge badge-${color}">${status}</span>`;
+}
+
+function formatTime(ts) {
+    if (!ts) return '';
+    const d = new Date(ts);
+    const now = new Date();
+    if (d.toDateString() === now.toDateString()) {
+        return d.toLocaleTimeString();
+    }
+    return d.toLocaleString();
+}
+
+function textToArray(text) {
+    return text.split('\n').map(s => s.trim()).filter(Boolean);
+}
+
+function arrayToText(arr) {
+    return (arr || []).join('\n');
+}
+
+// ---------------------------------------------------------------------------
 // Login page
 // ---------------------------------------------------------------------------
 
@@ -105,12 +140,8 @@ function LoginPage() {
 }
 
 // ---------------------------------------------------------------------------
-// Dashboard page — real-time WebSocket updates
+// Dashboard page -- real-time WebSocket updates
 // ---------------------------------------------------------------------------
-
-function fmt(n) {
-    return (n || 0).toLocaleString();
-}
 
 function StatCard({ value, label, sublabel, title }) {
     return html`
@@ -124,10 +155,12 @@ function StatCard({ value, label, sublabel, title }) {
 
 function DashboardPage() {
     const [stats, setStats] = useState(null);
+    const [messages, setMessages] = useState([]);
 
     useEffect(() => {
         // Fetch initial stats via REST
         api('GET', '/admin/api/stats').then(setStats).catch(() => {});
+        api('GET', '/admin/api/messages?limit=10').then(d => setMessages(d || [])).catch(() => {});
 
         // WebSocket for real-time updates
         const jwt = localStorage.getItem('jwt');
@@ -152,6 +185,7 @@ function DashboardPage() {
         // is not available or disconnects.
         const interval = setInterval(() => {
             api('GET', '/admin/api/stats').then(setStats).catch(() => {});
+            api('GET', '/admin/api/messages?limit=10').then(d => setMessages(d || [])).catch(() => {});
         }, 3000);
 
         return () => { ws.close(); clearInterval(interval); };
@@ -212,11 +246,34 @@ function DashboardPage() {
                     <tbody>
                         ${pools.map(p => html`
                             <tr key=${p.name}>
-                                <td>${p.name}</td>
+                                <td><span class="health-dot ${p.healthy ? 'green' : 'red'}"></span>${p.name}</td>
                                 <td>${p.active_connections}</td>
-                                <td class=${p.healthy ? 'status-healthy' : 'status-unhealthy'}>
-                                    ${p.healthy ? 'Healthy' : 'Unhealthy'}
-                                </td>
+                                <td>${statusBadge(p.healthy ? 'healthy' : 'unhealthy')}</td>
+                            </tr>
+                        `)}
+                    </tbody>
+                </table>
+            `
+        }
+
+        <h3>Recent Messages</h3>
+        ${messages.length === 0
+            ? html`<p>No recent messages.</p>`
+            : html`
+                <table class="compact-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Source / Dest</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${messages.map(m => html`
+                            <tr key=${m.gw_msg_id}>
+                                <td>${formatTime(m.created_at)}</td>
+                                <td>${m.source_addr}<span class="message-arrow">&rarr;</span>${m.dest_addr}</td>
+                                <td>${statusBadge(m.status)}</td>
                             </tr>
                         `)}
                     </tbody>
@@ -242,7 +299,11 @@ function ConnectionsPage() {
             .finally(() => setLoading(false));
     }, []);
 
-    useEffect(() => { refresh(); }, []);
+    useEffect(() => {
+        refresh();
+        const interval = setInterval(refresh, 5000);
+        return () => clearInterval(interval);
+    }, []);
 
     return html`
         <h2>Connections
@@ -260,8 +321,12 @@ function ConnectionsPage() {
                             <th>ID</th>
                             <th>System ID</th>
                             <th>Remote Address</th>
+                            <th>Bind Mode</th>
                             <th>Bound Since</th>
                             <th>In-Flight</th>
+                            <th>Total Submits</th>
+                            <th>Current TPS</th>
+                            <th>Config</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -270,8 +335,15 @@ function ConnectionsPage() {
                                 <td><code>${c.id}</code></td>
                                 <td>${c.system_id}</td>
                                 <td>${c.remote_addr}</td>
+                                <td>${c.bind_mode || 'transceiver'}</td>
                                 <td>${new Date(c.bound_since).toLocaleString()}</td>
                                 <td>${c.in_flight}</td>
+                                <td>${fmt(c.total_submits)}</td>
+                                <td>${fmt(c.current_tps)}</td>
+                                <td>${c.has_config
+                                    ? html`<a href="#/connconfigs">configured</a>`
+                                    : 'global'
+                                }</td>
                             </tr>
                         `)}
                     </tbody>
@@ -282,7 +354,463 @@ function ConnectionsPage() {
 }
 
 // ---------------------------------------------------------------------------
-// Routes page — MT and MO route CRUD
+// Connection Configs page (Clients)
+// ---------------------------------------------------------------------------
+
+function ConnConfigsPage() {
+    const [configs, setConfigs] = useState([]);
+    const [conns, setConns] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [editing, setEditing] = useState(null);
+
+    // Form state
+    const [systemId, setSystemId] = useState('');
+    const [password, setPassword] = useState('');
+    const [description, setDescription] = useState('');
+    const [enabled, setEnabled] = useState(true);
+    const [allowedIps, setAllowedIps] = useState('');
+    const [maxTps, setMaxTps] = useState('0');
+    const [costPerSms, setCostPerSms] = useState('0');
+    const [allowedPrefixes, setAllowedPrefixes] = useState('');
+    const [defaultSourceAddr, setDefaultSourceAddr] = useState('');
+    const [maxBinds, setMaxBinds] = useState('0');
+    const [bindTransceiver, setBindTransceiver] = useState(true);
+    const [bindTransmitter, setBindTransmitter] = useState(true);
+    const [bindReceiver, setBindReceiver] = useState(true);
+
+    const resetForm = () => {
+        setEditing(null);
+        setSystemId('');
+        setPassword('');
+        setDescription('');
+        setEnabled(true);
+        setAllowedIps('');
+        setMaxTps('0');
+        setCostPerSms('0');
+        setAllowedPrefixes('');
+        setDefaultSourceAddr('');
+        setMaxBinds('0');
+        setBindTransceiver(true);
+        setBindTransmitter(true);
+        setBindReceiver(true);
+    };
+
+    const refresh = useCallback(() => {
+        setLoading(true);
+        Promise.all([
+            api('GET', '/admin/api/connconfigs').then(d => setConfigs(d || [])),
+            api('GET', '/admin/api/connections').then(d => setConns(d || [])),
+        ]).catch(() => {}).finally(() => setLoading(false));
+    }, []);
+
+    useEffect(() => { refresh(); }, []);
+
+    const connCountBySystemId = {};
+    (conns || []).forEach(c => {
+        connCountBySystemId[c.system_id] = (connCountBySystemId[c.system_id] || 0) + 1;
+    });
+
+    const startEdit = async (sid) => {
+        try {
+            const cfg = await api('GET', '/admin/api/connconfigs/' + encodeURIComponent(sid));
+            setEditing(sid);
+            setSystemId(cfg.system_id);
+            setPassword('');
+            setDescription(cfg.description || '');
+            setEnabled(cfg.enabled);
+            setAllowedIps(arrayToText(cfg.allowed_ips));
+            setMaxTps(String(cfg.max_tps || 0));
+            setCostPerSms(String(cfg.cost_per_sms || 0));
+            setAllowedPrefixes(arrayToText(cfg.allowed_prefixes));
+            setDefaultSourceAddr(cfg.default_source_addr || '');
+            setMaxBinds(String(cfg.max_binds || 0));
+            const modes = cfg.allowed_bind_modes || [];
+            setBindTransceiver(modes.length === 0 || modes.includes('transceiver'));
+            setBindTransmitter(modes.length === 0 || modes.includes('transmitter'));
+            setBindReceiver(modes.length === 0 || modes.includes('receiver'));
+        } catch (err) {
+            showToast(err.message, 'error');
+        }
+    };
+
+    const submit = async (e) => {
+        e.preventDefault();
+        const modes = [];
+        if (bindTransceiver) modes.push('transceiver');
+        if (bindTransmitter) modes.push('transmitter');
+        if (bindReceiver) modes.push('receiver');
+
+        const payload = {
+            system_id: systemId,
+            password: password,
+            description,
+            enabled,
+            allowed_ips: textToArray(allowedIps),
+            max_tps: parseInt(maxTps) || 0,
+            cost_per_sms: parseFloat(costPerSms) || 0,
+            allowed_prefixes: textToArray(allowedPrefixes),
+            default_source_addr: defaultSourceAddr,
+            max_binds: parseInt(maxBinds) || 0,
+            allowed_bind_modes: modes,
+        };
+
+        try {
+            if (editing) {
+                await api('PUT', '/admin/api/connconfigs/' + encodeURIComponent(editing), payload);
+                showToast('Client config updated');
+            } else {
+                await api('POST', '/admin/api/connconfigs', payload);
+                showToast('Client config created');
+            }
+            resetForm();
+            refresh();
+        } catch (err) {
+            showToast(err.message, 'error');
+        }
+    };
+
+    const deleteConfig = async (sid) => {
+        if (!confirm(`Delete client config "${sid}"?`)) return;
+        try {
+            await api('DELETE', '/admin/api/connconfigs/' + encodeURIComponent(sid));
+            showToast('Client config deleted');
+            refresh();
+        } catch (err) {
+            showToast(err.message, 'error');
+        }
+    };
+
+    return html`
+        <h2>Clients</h2>
+
+        <div class="form-card">
+            <h4>${editing ? `Edit: ${editing}` : 'Add Client Config'}</h4>
+            <form onSubmit=${submit}>
+                <div class="form-grid">
+                    <label>System ID
+                        <input type="text" value=${systemId}
+                               onInput=${e => setSystemId(e.target.value)}
+                               required disabled=${!!editing} />
+                    </label>
+                    <label>Password${editing ? ' (blank = keep existing)' : ''}
+                        <input type="password" value=${password}
+                               onInput=${e => setPassword(e.target.value)}
+                               required=${!editing} />
+                    </label>
+                    <label>Description
+                        <input type="text" value=${description}
+                               onInput=${e => setDescription(e.target.value)} />
+                    </label>
+                </div>
+                <div class="form-grid">
+                    <label>Max TPS
+                        <input type="number" value=${maxTps} min="0"
+                               placeholder="0 = unlimited"
+                               onInput=${e => setMaxTps(e.target.value)} />
+                    </label>
+                    <label>Cost / SMS
+                        <input type="number" value=${costPerSms} min="0" step="0.01"
+                               onInput=${e => setCostPerSms(e.target.value)} />
+                    </label>
+                    <label>Max Binds
+                        <input type="number" value=${maxBinds} min="0"
+                               placeholder="0 = unlimited"
+                               onInput=${e => setMaxBinds(e.target.value)} />
+                    </label>
+                    <label>Default Source Addr
+                        <input type="text" value=${defaultSourceAddr}
+                               onInput=${e => setDefaultSourceAddr(e.target.value)} />
+                    </label>
+                </div>
+                <div class="form-grid">
+                    <label>Allowed IPs
+                        <textarea rows="3" value=${allowedIps}
+                                  placeholder="One IP per line, empty = allow all"
+                                  onInput=${e => setAllowedIps(e.target.value)}></textarea>
+                    </label>
+                    <label>Allowed Prefixes
+                        <textarea rows="3" value=${allowedPrefixes}
+                                  placeholder="One prefix per line, empty = allow all"
+                                  onInput=${e => setAllowedPrefixes(e.target.value)}></textarea>
+                    </label>
+                </div>
+                <div style="margin-bottom: 0.75rem">
+                    <label class="checkbox-label">
+                        <input type="checkbox" checked=${enabled}
+                               onChange=${e => setEnabled(e.target.checked)} />
+                        Enabled
+                    </label>
+                </div>
+                <div>
+                    <label style="margin-bottom: 0.3rem">Allowed Bind Modes</label>
+                    <div class="checkbox-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" checked=${bindTransceiver}
+                                   onChange=${e => setBindTransceiver(e.target.checked)} />
+                            Transceiver
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" checked=${bindTransmitter}
+                                   onChange=${e => setBindTransmitter(e.target.checked)} />
+                            Transmitter
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" checked=${bindReceiver}
+                                   onChange=${e => setBindReceiver(e.target.checked)} />
+                            Receiver
+                        </label>
+                    </div>
+                </div>
+                <button type="submit">${editing ? 'Update' : 'Create'}</button>
+                ${editing && html`
+                    <button type="button" class="secondary" style="margin-left: 0.5rem"
+                            onClick=${resetForm}>Cancel</button>
+                `}
+            </form>
+        </div>
+
+        ${configs.length === 0 && !loading
+            ? html`<p>No client configs.</p>`
+            : html`
+                <table>
+                    <thead>
+                        <tr>
+                            <th>System ID</th>
+                            <th>Description</th>
+                            <th>Enabled</th>
+                            <th>Active</th>
+                            <th>Max TPS</th>
+                            <th>Cost/SMS</th>
+                            <th>Allowed Prefixes</th>
+                            <th>Max Binds</th>
+                            <th>Created</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${configs.map(c => html`
+                            <tr key=${c.system_id}>
+                                <td><code>${c.system_id}</code></td>
+                                <td>${c.description || ''}</td>
+                                <td>${statusBadge(c.enabled ? 'healthy' : 'unhealthy')}</td>
+                                <td>${connCountBySystemId[c.system_id] || 0}</td>
+                                <td>${c.max_tps || 'unlimited'}</td>
+                                <td>${c.cost_per_sms ? c.cost_per_sms.toFixed(2) : '0.00'}</td>
+                                <td>${(() => {
+                                    const p = c.allowed_prefixes || [];
+                                    if (p.length === 0) return 'all';
+                                    const shown = p.slice(0, 3).join(', ');
+                                    return p.length > 3 ? shown + '...' : shown;
+                                })()}</td>
+                                <td>${c.max_binds || 'unlimited'}</td>
+                                <td>${new Date(c.created_at).toLocaleDateString()}</td>
+                                <td>
+                                    <button class="edit-btn secondary"
+                                            onClick=${() => startEdit(c.system_id)}>
+                                        Edit
+                                    </button>
+                                    <button class="danger-btn"
+                                            onClick=${() => deleteConfig(c.system_id)}>
+                                        Delete
+                                    </button>
+                                </td>
+                            </tr>
+                        `)}
+                    </tbody>
+                </table>
+            `
+        }
+    `;
+}
+
+// ---------------------------------------------------------------------------
+// Pools page
+// ---------------------------------------------------------------------------
+
+function PoolsPage() {
+    const [pools, setPools] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    // Form state
+    const [name, setName] = useState('');
+    const [host, setHost] = useState('');
+    const [port, setPort] = useState('2775');
+    const [systemId, setSystemId] = useState('');
+    const [password, setPassword] = useState('');
+    const [sourceAddr, setSourceAddr] = useState('');
+    const [connections, setConnections] = useState('2');
+    const [windowSize, setWindowSize] = useState('10');
+    const [bindMode, setBindMode] = useState('transceiver');
+    const [interfaceVersion, setInterfaceVersion] = useState('3.4');
+    const [tlsEnabled, setTlsEnabled] = useState(false);
+
+    const resetForm = () => {
+        setName(''); setHost(''); setPort('2775'); setSystemId('');
+        setPassword(''); setSourceAddr(''); setConnections('2');
+        setWindowSize('10'); setBindMode('transceiver');
+        setInterfaceVersion('3.4'); setTlsEnabled(false);
+    };
+
+    const refresh = useCallback(() => {
+        setLoading(true);
+        api('GET', '/admin/api/pools')
+            .then(d => setPools(d || []))
+            .catch(() => {})
+            .finally(() => setLoading(false));
+    }, []);
+
+    useEffect(() => { refresh(); }, []);
+
+    const createPool = async (e) => {
+        e.preventDefault();
+        try {
+            await api('POST', '/admin/api/pools', {
+                name,
+                host,
+                port: parseInt(port) || 2775,
+                system_id: systemId,
+                password,
+                source_addr: sourceAddr,
+                connections: parseInt(connections) || 2,
+                window_size: parseInt(windowSize) || 10,
+                bind_mode: bindMode,
+                interface_version: interfaceVersion,
+                tls_enabled: tlsEnabled,
+            });
+            showToast('Pool created');
+            resetForm();
+            refresh();
+        } catch (err) {
+            showToast(err.message, 'error');
+        }
+    };
+
+    const deletePool = async (poolName) => {
+        if (!confirm(`Delete pool "${poolName}"?`)) return;
+        try {
+            await api('DELETE', '/admin/api/pools/' + encodeURIComponent(poolName));
+            showToast('Pool deleted');
+            refresh();
+        } catch (err) {
+            showToast(err.message, 'error');
+        }
+    };
+
+    return html`
+        <h2>Pools</h2>
+
+        <div class="form-card">
+            <h4>Add Pool</h4>
+            <form onSubmit=${createPool}>
+                <div class="form-grid">
+                    <label>Name
+                        <input type="text" value=${name}
+                               onInput=${e => setName(e.target.value)} required />
+                    </label>
+                    <label>Host
+                        <input type="text" value=${host}
+                               onInput=${e => setHost(e.target.value)} required />
+                    </label>
+                    <label>Port
+                        <input type="number" value=${port}
+                               onInput=${e => setPort(e.target.value)} required />
+                    </label>
+                </div>
+                <div class="form-grid">
+                    <label>System ID
+                        <input type="text" value=${systemId}
+                               onInput=${e => setSystemId(e.target.value)} required />
+                    </label>
+                    <label>Password
+                        <input type="password" value=${password}
+                               onInput=${e => setPassword(e.target.value)} required />
+                    </label>
+                    <label>Source Addr
+                        <input type="text" value=${sourceAddr}
+                               onInput=${e => setSourceAddr(e.target.value)} />
+                    </label>
+                </div>
+                <div class="form-grid">
+                    <label>Connections
+                        <input type="number" value=${connections} min="1"
+                               onInput=${e => setConnections(e.target.value)} />
+                    </label>
+                    <label>Window Size
+                        <input type="number" value=${windowSize} min="1"
+                               onInput=${e => setWindowSize(e.target.value)} />
+                    </label>
+                    <label>Bind Mode
+                        <select value=${bindMode} onChange=${e => setBindMode(e.target.value)}>
+                            <option value="transceiver">Transceiver</option>
+                            <option value="transmitter">Transmitter</option>
+                            <option value="receiver">Receiver</option>
+                        </select>
+                    </label>
+                    <label>Interface Version
+                        <select value=${interfaceVersion} onChange=${e => setInterfaceVersion(e.target.value)}>
+                            <option value="3.4">3.4</option>
+                            <option value="5.0">5.0</option>
+                        </select>
+                    </label>
+                </div>
+                <div style="margin-bottom: 0.75rem">
+                    <label class="checkbox-label">
+                        <input type="checkbox" checked=${tlsEnabled}
+                               onChange=${e => setTlsEnabled(e.target.checked)} />
+                        TLS Enabled
+                    </label>
+                </div>
+                <button type="submit">Create Pool</button>
+            </form>
+        </div>
+
+        ${pools.length === 0 && !loading
+            ? html`<p>No pools configured.</p>`
+            : html`
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Host:Port</th>
+                            <th>System ID</th>
+                            <th>Conns</th>
+                            <th>Window</th>
+                            <th>Bind Mode</th>
+                            <th>Version</th>
+                            <th>Active</th>
+                            <th>Health</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${pools.map(p => html`
+                            <tr key=${p.name}>
+                                <td>${p.name}</td>
+                                <td>${p.host}:${p.port}</td>
+                                <td>${p.system_id}</td>
+                                <td>${p.connections}</td>
+                                <td>${p.window_size}</td>
+                                <td>${p.bind_mode || 'transceiver'}</td>
+                                <td>${p.interface_version || '3.4'}</td>
+                                <td>${p.active_connections}</td>
+                                <td>${statusBadge(p.healthy ? 'healthy' : 'unhealthy')}</td>
+                                <td>
+                                    <button class="danger-btn"
+                                            onClick=${() => deletePool(p.name)}>
+                                        Delete
+                                    </button>
+                                </td>
+                            </tr>
+                        `)}
+                    </tbody>
+                </table>
+            `
+        }
+    `;
+}
+
+// ---------------------------------------------------------------------------
+// Routes page -- MT and MO route CRUD
 // ---------------------------------------------------------------------------
 
 function RoutesPage() {
@@ -573,7 +1101,168 @@ function RoutesPage() {
 }
 
 // ---------------------------------------------------------------------------
-// API Keys page — create / revoke
+// Messages page
+// ---------------------------------------------------------------------------
+
+function MessagesPage() {
+    const [messages, setMessages] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [conns, setConns] = useState([]);
+    const [resultCount, setResultCount] = useState(0);
+
+    // Search form state
+    const [connId, setConnId] = useState('');
+    const [status, setStatus] = useState('');
+    const [source, setSource] = useState('');
+    const [dest, setDest] = useState('');
+    const [after, setAfter] = useState('');
+    const [before, setBefore] = useState('');
+
+    useEffect(() => {
+        api('GET', '/admin/api/connections').then(d => setConns(d || [])).catch(() => {});
+        doSearch();
+    }, []);
+
+    const uniqueSystemIds = [...new Set((conns || []).map(c => c.system_id))];
+
+    const buildQuery = (extraParams = {}) => {
+        const params = new URLSearchParams();
+        if (connId) params.set('conn_id', connId);
+        if (status) params.set('status', status);
+        if (source) params.set('from', source);
+        if (dest) params.set('to', dest);
+        if (after) params.set('after', new Date(after).toISOString());
+        if (before) params.set('before', new Date(before).toISOString());
+        params.set('limit', '50');
+        for (const [k, v] of Object.entries(extraParams)) {
+            params.set(k, v);
+        }
+        return params.toString();
+    };
+
+    const doSearch = async (e) => {
+        if (e) e.preventDefault();
+        setLoading(true);
+        try {
+            const data = await api('GET', '/admin/api/messages?' + buildQuery());
+            setMessages(data || []);
+            setResultCount((data || []).length);
+        } catch (err) {
+            showToast(err.message, 'error');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const loadMore = async () => {
+        if (messages.length === 0) return;
+        const lastMsg = messages[messages.length - 1];
+        setLoading(true);
+        try {
+            const data = await api('GET', '/admin/api/messages?' + buildQuery({
+                before: lastMsg.created_at,
+            }));
+            if (data && data.length > 0) {
+                setMessages(prev => [...prev, ...data]);
+                setResultCount(prev => prev + data.length);
+            }
+        } catch (err) {
+            showToast(err.message, 'error');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return html`
+        <h2>Messages</h2>
+
+        <div class="form-card">
+            <form onSubmit=${doSearch}>
+                <div class="search-form">
+                    <label>Connection
+                        <select value=${connId} onChange=${e => setConnId(e.target.value)}>
+                            <option value="">All</option>
+                            ${uniqueSystemIds.map(sid => html`
+                                <option key=${sid} value=${sid}>${sid}</option>
+                            `)}
+                        </select>
+                    </label>
+                    <label>Status
+                        <select value=${status} onChange=${e => setStatus(e.target.value)}>
+                            <option value="">All</option>
+                            <option value="accepted">Accepted</option>
+                            <option value="forwarded">Forwarded</option>
+                            <option value="delivered">Delivered</option>
+                            <option value="failed">Failed</option>
+                            <option value="rejected">Rejected</option>
+                        </select>
+                    </label>
+                    <label>Source
+                        <input type="text" value=${source} placeholder="Source address"
+                               onInput=${e => setSource(e.target.value)} />
+                    </label>
+                    <label>Destination
+                        <input type="text" value=${dest} placeholder="Destination address"
+                               onInput=${e => setDest(e.target.value)} />
+                    </label>
+                    <label>After
+                        <input type="datetime-local" value=${after}
+                               onInput=${e => setAfter(e.target.value)} />
+                    </label>
+                    <label>Before
+                        <input type="datetime-local" value=${before}
+                               onInput=${e => setBefore(e.target.value)} />
+                    </label>
+                </div>
+                <button type="submit" aria-busy=${loading}>Search</button>
+            </form>
+        </div>
+
+        ${resultCount > 0 && html`<p><strong>${resultCount}</strong> messages found</p>`}
+
+        ${messages.length === 0 && !loading
+            ? html`<p>No messages found.</p>`
+            : html`
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Message ID</th>
+                            <th>Connection</th>
+                            <th>Source / Dest</th>
+                            <th>Status</th>
+                            <th>DLR Status</th>
+                            <th>Cost</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${messages.map(m => html`
+                            <tr key=${m.gw_msg_id}>
+                                <td>${formatTime(m.created_at)}</td>
+                                <td title=${m.gw_msg_id}><code>${(m.gw_msg_id || '').substring(0, 12)}</code></td>
+                                <td>${m.conn_id}</td>
+                                <td>${m.source_addr}<span class="message-arrow">&rarr;</span>${m.dest_addr}</td>
+                                <td>${statusBadge(m.status)}</td>
+                                <td>${m.dlr_status || ''}</td>
+                                <td>${m.cost > 0 ? m.cost.toFixed(2) : ''}</td>
+                            </tr>
+                        `)}
+                    </tbody>
+                </table>
+
+                ${messages.length >= 50 && html`
+                    <button onClick=${loadMore} aria-busy=${loading}
+                            style="margin-top: 0.5rem">
+                        Load more
+                    </button>
+                `}
+            `
+        }
+    `;
+}
+
+// ---------------------------------------------------------------------------
+// API Keys page -- create / revoke
 // ---------------------------------------------------------------------------
 
 function APIKeysPage() {
@@ -698,7 +1387,7 @@ function APIKeysPage() {
 }
 
 // ---------------------------------------------------------------------------
-// Users page — create / delete / change password
+// Users page -- create / delete / change password
 // ---------------------------------------------------------------------------
 
 function UsersPage() {
@@ -883,7 +1572,10 @@ function App() {
     const pages = {
         '#/dashboard': DashboardPage,
         '#/connections': ConnectionsPage,
+        '#/connconfigs': ConnConfigsPage,
+        '#/pools': PoolsPage,
         '#/routes': RoutesPage,
+        '#/messages': MessagesPage,
         '#/apikeys': APIKeysPage,
         '#/users': UsersPage,
     };
@@ -895,7 +1587,10 @@ function App() {
             <span class="brand">SMSC Gateway</span>
             <a href="#/dashboard" class=${route === '#/dashboard' ? 'active' : ''}>Dashboard</a>
             <a href="#/connections" class=${route === '#/connections' ? 'active' : ''}>Connections</a>
+            <a href="#/connconfigs" class=${route === '#/connconfigs' ? 'active' : ''}>Clients</a>
+            <a href="#/pools" class=${route === '#/pools' ? 'active' : ''}>Pools</a>
             <a href="#/routes" class=${route === '#/routes' ? 'active' : ''}>Routes</a>
+            <a href="#/messages" class=${route === '#/messages' ? 'active' : ''}>Messages</a>
             <a href="#/apikeys" class=${route === '#/apikeys' ? 'active' : ''}>API Keys</a>
             <a href="#/users" class=${route === '#/users' ? 'active' : ''}>Users</a>
             <a href="#" onClick=${logout}>Logout</a>

@@ -184,6 +184,60 @@ func (pm *PoolManager) AllHealth() []PoolHealth {
 	return result
 }
 
+// PoolListEntry combines pool configuration with live health status.
+type PoolListEntry struct {
+	Name              string `json:"name"`
+	Host              string `json:"host"`
+	Port              int    `json:"port"`
+	SystemID          string `json:"system_id"`
+	Connections       int    `json:"connections"`
+	WindowSize        int    `json:"window_size"`
+	BindMode          string `json:"bind_mode"`
+	InterfaceVersion  string `json:"interface_version"`
+	ActiveConnections int    `json:"active_connections"`
+	Healthy           bool   `json:"healthy"`
+}
+
+// ListWithHealth returns pool configuration merged with live health for every
+// managed pool, sorted by name.
+func (pm *PoolManager) ListWithHealth() []PoolListEntry {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	result := make([]PoolListEntry, 0, len(pm.pools))
+	for name, p := range pm.pools {
+		cfg := pm.configs[name]
+		active := p.ActiveConnections()
+		entry := PoolListEntry{
+			Name:              name,
+			ActiveConnections: active,
+			Healthy:           active > 0,
+		}
+		if cfg != nil {
+			entry.Host = cfg.Host
+			entry.Port = cfg.Port
+			entry.SystemID = cfg.SystemID
+			entry.Connections = cfg.Connections
+			entry.WindowSize = cfg.WindowSize
+			entry.BindMode = cfg.BindMode
+			entry.InterfaceVersion = cfg.InterfaceVersion
+		}
+		result = append(result, entry)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Name < result[j].Name
+	})
+	return result
+}
+
+// GetConfig returns the stored configuration for the named pool, or nil if
+// the pool does not exist.
+func (pm *PoolManager) GetConfig(name string) *SouthboundPoolConfig {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	return pm.configs[name]
+}
+
 // Names returns the names of all managed pools (unordered).
 func (pm *PoolManager) Names() []string {
 	pm.mu.RLock()

@@ -446,11 +446,15 @@ func (s *Server) ConnectionCount() int {
 
 // ConnectionInfo describes a northbound engine connection for the admin API.
 type ConnectionInfo struct {
-	ID         string    `json:"id"`
-	SystemID   string    `json:"system_id"`
-	RemoteAddr string    `json:"remote_addr"`
-	BoundSince time.Time `json:"bound_since"`
-	InFlight   int32     `json:"in_flight"`
+	ID           string    `json:"id"`
+	SystemID     string    `json:"system_id"`
+	RemoteAddr   string    `json:"remote_addr"`
+	BoundSince   time.Time `json:"bound_since"`
+	InFlight     int32     `json:"in_flight"`
+	BindMode     string    `json:"bind_mode"`
+	TotalSubmits uint64    `json:"total_submits"`
+	CurrentTPS   uint64    `json:"current_tps"`
+	HasConfig    bool      `json:"has_config"`
 }
 
 // ListConnections returns details of all bound connections.
@@ -464,11 +468,15 @@ func (s *Server) ListConnections() []ConnectionInfo {
 			continue
 		}
 		result = append(result, ConnectionInfo{
-			ID:         c.ID,
-			SystemID:   c.SystemID,
-			RemoteAddr: c.conn.RemoteAddr().String(),
-			BoundSince: c.createdAt,
-			InFlight:   c.InFlightCount(),
+			ID:           c.ID,
+			SystemID:     c.SystemID,
+			RemoteAddr:   c.conn.RemoteAddr().String(),
+			BoundSince:   c.createdAt,
+			InFlight:     c.InFlightCount(),
+			BindMode:     bindModeName(c.BindMode),
+			TotalSubmits: c.TotalSubmits(),
+			CurrentTPS:   c.CurrentTPS(),
+			HasConfig:    c.connConfig != nil,
 		})
 	}
 	return result
