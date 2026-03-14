@@ -50,7 +50,7 @@ func TestTLSConnect(t *testing.T) {
 
 		// Read the bind_transceiver PDU from the client.
 		headerBuf := make([]byte, pduHeaderLen)
-		conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 		if _, err := readFull(conn, headerBuf); err != nil {
 			handshakeDone <- err
 			return
@@ -88,7 +88,7 @@ func TestTLSConnect(t *testing.T) {
 			Body:           []byte("test-smsc\x00"),
 		}
 		data := EncodePDU(resp)
-		conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		if _, err := conn.Write(data); err != nil {
 			handshakeDone <- err
 			return
@@ -207,7 +207,7 @@ func TestPlainConnectUnchanged(t *testing.T) {
 		defer conn.Close()
 
 		headerBuf := make([]byte, pduHeaderLen)
-		conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 		if _, err := readFull(conn, headerBuf); err != nil {
 			handshakeDone <- err
 			return
@@ -236,7 +236,7 @@ func TestPlainConnectUnchanged(t *testing.T) {
 			Body:           []byte("test-smsc\x00"),
 		}
 		data := EncodePDU(resp)
-		conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		if _, err := conn.Write(data); err != nil {
 			handshakeDone <- err
 			return

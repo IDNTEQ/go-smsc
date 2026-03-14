@@ -149,8 +149,8 @@ func EncodeSubmitSM(sourceAddr string, sourceTON, sourceNPI byte,
 	if len(shortMessage) > 254 {
 		buf.WriteByte(0x00) // sm_length = 0 when using message_payload TLV
 		// Append message_payload TLV (tag=0x0424)
-		binary.Write(&buf, binary.BigEndian, uint16(0x0424)) // TLV tag
-		binary.Write(&buf, binary.BigEndian, uint16(len(shortMessage))) // TLV length
+		_ = binary.Write(&buf, binary.BigEndian, uint16(0x0424)) // TLV tag
+		_ = binary.Write(&buf, binary.BigEndian, uint16(len(shortMessage))) // TLV length
 		buf.Write(shortMessage)
 	} else {
 		buf.WriteByte(byte(len(shortMessage)))
