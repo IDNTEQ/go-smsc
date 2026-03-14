@@ -146,7 +146,7 @@ func (a *AdminAPI) handleCreateMTRoute(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusCreated, route)
+	writeJSON(w, http.StatusCreated, &route)
 }
 
 func (a *AdminAPI) handleDeleteMTRoute(w http.ResponseWriter, r *http.Request) {
@@ -174,7 +174,7 @@ func (a *AdminAPI) handleCreateMORoute(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusCreated, route)
+	writeJSON(w, http.StatusCreated, &route)
 }
 
 func (a *AdminAPI) handleDeleteMORoute(w http.ResponseWriter, r *http.Request) {
