@@ -24,6 +24,8 @@ func main() {
 	if os.Getenv("LOG_LEVEL") == "debug" {
 		logger, _ = zap.NewDevelopment()
 	}
+	logger.Info("SMSC Gateway starting", zap.String("version", gateway.Version))
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 

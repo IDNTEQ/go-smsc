@@ -126,6 +126,7 @@ func (a *AdminAPI) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 func (a *AdminAPI) handleStats(w http.ResponseWriter, r *http.Request) {
 	stats := map[string]any{
+		"version":          Version,
 		"pools":            a.poolManager.AllHealth(),
 		"connections":      a.server.ConnectionCount(),
 		"total_submits":    a.router.TotalSubmits(),

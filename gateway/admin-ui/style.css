@@ -20,6 +20,13 @@ nav.app-nav .brand {
     margin-right: auto;
 }
 
+.version-tag {
+    font-size: 0.7rem;
+    font-weight: 400;
+    color: var(--pico-muted-color);
+    vertical-align: super;
+}
+
 nav.app-nav a {
     text-decoration: none;
     padding: 0.3rem 0.6rem;

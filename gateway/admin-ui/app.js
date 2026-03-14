@@ -227,13 +227,13 @@ function DashboardPage() {
                 sublabel="DLR/MO pending" title="Northbound deliveries pending retry" />
             <${StatCard} value=${stats.submit_retries} label="Submit Retries"
                 sublabel="southbound pending" title="Southbound submits pending retry" />
-            <${StatCard} value=${pools.length} label="Pools"
-                sublabel="configured" title="Number of southbound SMSC pools" />
+            <${StatCard} value=${pools.length} label="Binds"
+                sublabel="configured" title="Number of outbound SMSC binds" />
         </div>
 
-        <h3>Pool Health</h3>
+        <h3>Outbound Bind Health</h3>
         ${pools.length === 0
-            ? html`<p>No pools configured.</p>`
+            ? html`<p>No outbound binds configured.</p>`
             : html`
                 <table>
                     <thead>
@@ -298,16 +298,20 @@ function relativeTime(ts) {
 
 function ConnectionsPage() {
     const [conns, setConns] = useState([]);
+    const [pools, setPools] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selected, setSelected] = useState(null);
     const [detail, setDetail] = useState(null);
 
     const refresh = useCallback(() => {
         setLoading(true);
-        api('GET', '/admin/api/connections')
-            .then(data => setConns(data || []))
-            .catch(() => {})
-            .finally(() => setLoading(false));
+        Promise.all([
+            api('GET', '/admin/api/connections').catch(() => []),
+            api('GET', '/admin/api/pools').catch(() => []),
+        ]).then(([c, p]) => {
+            setConns(c || []);
+            setPools(p || []);
+        }).finally(() => setLoading(false));
     }, []);
 
     useEffect(() => {
@@ -334,7 +338,7 @@ function ConnectionsPage() {
     if (selected && detail) {
         return html`
             <h2>Connection Detail</h2>
-            <p><a href="#" onClick=${(e) => { e.preventDefault(); backToList(); }}>Back to list</a></p>
+            <p><a href="#" onClick=${(e) => { e.preventDefault(); backToList(); }}>&larr; Back to connections</a></p>
             <div class="form-card">
                 <h4>${detail.system_id}</h4>
                 <table>
@@ -381,8 +385,10 @@ function ConnectionsPage() {
                 Refresh
             </button>
         </h2>
+
+        <h3>Inbound - Upstream (Clients &rarr; Gateway)</h3>
         ${conns.length === 0 && !loading
-            ? html`<p>No active connections.</p>`
+            ? html`<p style="color: var(--pico-muted-color)">No inbound connections.</p>`
             : html`
                 <table>
                     <thead>
@@ -407,6 +413,41 @@ function ConnectionsPage() {
                                 <td>${fmt(c.current_tps)}</td>
                                 <td>${fmt(c.total_submits)}</td>
                                 <td>${statusBadge('healthy')}</td>
+                            </tr>
+                        `)}
+                    </tbody>
+                </table>
+            `
+        }
+
+        <h3 style="margin-top: 2rem">Outbound - Downstream (Gateway &rarr; SMSCs)</h3>
+        ${pools.length === 0 && !loading
+            ? html`<p style="color: var(--pico-muted-color)">No outbound binds configured. <a href="#/binds">Add a bind</a>.</p>`
+            : html`
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Host</th>
+                            <th>System ID</th>
+                            <th>Bind Mode</th>
+                            <th>Connections</th>
+                            <th>Active</th>
+                            <th>Health</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${pools.map(p => html`
+                            <tr key=${p.name}>
+                                <td><code><a href="#/binds">${p.name}</a></code></td>
+                                <td>${p.host}:${p.port}</td>
+                                <td>${p.system_id}</td>
+                                <td>${p.bind_mode || 'transceiver'}</td>
+                                <td>${p.connections}</td>
+                                <td>${p.active_connections}</td>
+                                <td>${p.healthy
+                                    ? html`<span class="status-badge badge-green">Healthy</span>`
+                                    : html`<span class="status-badge badge-red">Unhealthy</span>`}</td>
                             </tr>
                         `)}
                     </tbody>
@@ -690,10 +731,10 @@ function ConnConfigsPage() {
 }
 
 // ---------------------------------------------------------------------------
-// Pools page
+// Binds page (outbound SMSC connections)
 // ---------------------------------------------------------------------------
 
-function PoolsPage() {
+function BindsPage() {
     const [pools, setPools] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -743,7 +784,7 @@ function PoolsPage() {
                 interface_version: interfaceVersion,
                 tls_enabled: tlsEnabled,
             });
-            showToast('Pool created');
+            showToast('Bind created');
             resetForm();
             refresh();
         } catch (err) {
@@ -752,10 +793,10 @@ function PoolsPage() {
     };
 
     const deletePool = async (poolName) => {
-        if (!confirm(`Delete pool "${poolName}"?`)) return;
+        if (!confirm(`Delete bind "${poolName}"?`)) return;
         try {
             await api('DELETE', '/admin/api/pools/' + encodeURIComponent(poolName));
-            showToast('Pool deleted');
+            showToast('Bind deleted');
             refresh();
         } catch (err) {
             showToast(err.message, 'error');
@@ -763,10 +804,11 @@ function PoolsPage() {
     };
 
     return html`
-        <h2>Pools</h2>
+        <h2>Binds</h2>
+        <p style="color: var(--pico-muted-color); margin-top: -0.5rem">Outbound SMSC connections (Gateway → SMSCs)</p>
 
         <div class="form-card">
-            <h4>Add Pool</h4>
+            <h4>Add Bind</h4>
             <form onSubmit=${createPool}>
                 <div class="form-grid">
                     <label>Name
@@ -826,12 +868,12 @@ function PoolsPage() {
                         TLS Enabled
                     </label>
                 </div>
-                <button type="submit">Create Pool</button>
+                <button type="submit">Create Bind</button>
             </form>
         </div>
 
         ${pools.length === 0 && !loading
-            ? html`<p>No pools configured.</p>`
+            ? html`<p>No binds configured.</p>`
             : html`
                 <table>
                     <thead>
@@ -1019,7 +1061,7 @@ function RoutesPage() {
                 </div>
                 ${poolNames.length > 0
                     ? html`
-                        <label>Pools</label>
+                        <label>Binds</label>
                         <div class="checkbox-group">
                             ${poolNames.map(name => html`
                                 <label class="checkbox-label" key=${name}>
@@ -1032,7 +1074,7 @@ function RoutesPage() {
                         </div>
                     `
                     : html`
-                        <p style="color: #888">No pools available. <a href="#/pools">Create a pool first</a>.</p>
+                        <p style="color: #888">No binds available. <a href="#/binds">Create a bind first</a>.</p>
                     `
                 }
                 <button type="submit">Add MT Route</button>
@@ -1047,7 +1089,7 @@ function RoutesPage() {
                         <tr>
                             <th>Prefix</th>
                             <th>Strategy</th>
-                            <th>Pools</th>
+                            <th>Binds</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -1607,10 +1649,13 @@ function UsersPage() {
 
 function App() {
     const [route, setRoute] = useState(location.hash || '#/dashboard');
+    const [appVersion, setAppVersion] = useState('');
 
     useEffect(() => {
         const handler = () => setRoute(location.hash || '#/dashboard');
         window.addEventListener('hashchange', handler);
+        // Fetch version once
+        api('GET', '/admin/api/stats').then(s => { if (s && s.version) setAppVersion(s.version); }).catch(() => {});
         return () => window.removeEventListener('hashchange', handler);
     }, []);
 
@@ -1635,7 +1680,7 @@ function App() {
         '#/dashboard': DashboardPage,
         '#/connections': ConnectionsPage,
         '#/connconfigs': ConnConfigsPage,
-        '#/pools': PoolsPage,
+        '#/binds': BindsPage,
         '#/routes': RoutesPage,
         '#/messages': MessagesPage,
         '#/apikeys': APIKeysPage,
@@ -1646,11 +1691,11 @@ function App() {
 
     return html`
         <nav class="app-nav">
-            <span class="brand">SMSC Gateway</span>
+            <span class="brand">SMSC Gateway${appVersion ? html` <span class="version-tag">v${appVersion}</span>` : ''}</span>
             <a href="#/dashboard" class=${route === '#/dashboard' ? 'active' : ''}>Dashboard</a>
             <a href="#/connections" class=${route === '#/connections' ? 'active' : ''}>Connections</a>
             <a href="#/connconfigs" class=${route === '#/connconfigs' ? 'active' : ''}>Clients</a>
-            <a href="#/pools" class=${route === '#/pools' ? 'active' : ''}>Pools</a>
+            <a href="#/binds" class=${route === '#/binds' ? 'active' : ''}>Binds</a>
             <a href="#/routes" class=${route === '#/routes' ? 'active' : ''}>Routes</a>
             <a href="#/messages" class=${route === '#/messages' ? 'active' : ''}>Messages</a>
             <a href="#/apikeys" class=${route === '#/apikeys' ? 'active' : ''}>API Keys</a>

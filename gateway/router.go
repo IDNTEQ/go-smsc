@@ -278,10 +278,13 @@ func (r *Router) HandleSubmit(connID string, seqNum uint32, body []byte) {
 	}
 
 	// Per-connection prefix filtering.
+	// Strip leading '+' from destination for matching — MSISDNs may use
+	// E.164 format (+27821234567) while prefixes are digits-only (27).
 	if c != nil && c.ConnConfig() != nil && len(c.ConnConfig().AllowedPrefixes) > 0 {
+		normalizedDest := strings.TrimPrefix(destAddr, "+")
 		allowed := false
 		for _, prefix := range c.ConnConfig().AllowedPrefixes {
-			if strings.HasPrefix(destAddr, prefix) {
+			if strings.HasPrefix(normalizedDest, prefix) {
 				allowed = true
 				break
 			}
