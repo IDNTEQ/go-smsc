@@ -287,9 +287,20 @@ function DashboardPage() {
 // Connections page
 // ---------------------------------------------------------------------------
 
+function relativeTime(ts) {
+    if (!ts) return '';
+    const diff = (Date.now() - new Date(ts).getTime()) / 1000;
+    if (diff < 60) return Math.floor(diff) + 's ago';
+    if (diff < 3600) return Math.floor(diff / 60) + ' min ago';
+    if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+    return Math.floor(diff / 86400) + 'd ago';
+}
+
 function ConnectionsPage() {
     const [conns, setConns] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [selected, setSelected] = useState(null);
+    const [detail, setDetail] = useState(null);
 
     const refresh = useCallback(() => {
         setLoading(true);
@@ -305,6 +316,64 @@ function ConnectionsPage() {
         return () => clearInterval(interval);
     }, []);
 
+    const selectConn = async (id) => {
+        setSelected(id);
+        try {
+            const data = await api('GET', '/admin/api/connections/' + encodeURIComponent(id));
+            setDetail(data);
+        } catch {
+            setDetail(null);
+        }
+    };
+
+    const backToList = () => {
+        setSelected(null);
+        setDetail(null);
+    };
+
+    if (selected && detail) {
+        return html`
+            <h2>Connection Detail</h2>
+            <p><a href="#" onClick=${(e) => { e.preventDefault(); backToList(); }}>Back to list</a></p>
+            <div class="form-card">
+                <h4>${detail.system_id}</h4>
+                <table>
+                    <tbody>
+                        <tr><td><strong>System ID</strong></td><td>${detail.has_config
+                            ? html`<a href="#/connconfigs">${detail.system_id}</a>`
+                            : detail.system_id}</td></tr>
+                        <tr><td><strong>Remote Address</strong></td><td>${detail.remote_addr}</td></tr>
+                        <tr><td><strong>Bind Mode</strong></td><td>${detail.bind_mode || 'transceiver'}</td></tr>
+                        <tr><td><strong>Bound Since</strong></td><td>${new Date(detail.bound_since).toLocaleString()} (${relativeTime(detail.bound_since)})</td></tr>
+                        <tr><td><strong>Total Submits</strong></td><td>${fmt(detail.total_submits)}</td></tr>
+                        <tr><td><strong>Current TPS</strong></td><td>${fmt(detail.current_tps)}</td></tr>
+                        <tr><td><strong>In-Flight</strong></td><td>${detail.in_flight}</td></tr>
+                        <tr><td><strong>Status</strong></td><td>${statusBadge('healthy')}</td></tr>
+                    </tbody>
+                </table>
+
+                ${detail.config
+                    ? html`
+                        <h5 style="margin-top: 1.5rem">Client Config</h5>
+                        <table>
+                            <tbody>
+                                <tr><td><strong>Description</strong></td><td>${detail.config.description || '(none)'}</td></tr>
+                                <tr><td><strong>Max TPS</strong></td><td>${detail.config.max_tps || 'unlimited'}</td></tr>
+                                <tr><td><strong>Cost / SMS</strong></td><td>${detail.config.cost_per_sms ? detail.config.cost_per_sms.toFixed(2) : '0.00'}</td></tr>
+                                <tr><td><strong>Max Binds</strong></td><td>${detail.config.max_binds || 'unlimited'}</td></tr>
+                                <tr><td><strong>Allowed Prefixes</strong></td><td>${(detail.config.allowed_prefixes || []).join(', ') || 'all'}</td></tr>
+                                <tr><td><strong>Allowed IPs</strong></td><td>${(detail.config.allowed_ips || []).join(', ') || 'all'}</td></tr>
+                                <tr><td><strong>Allowed Bind Modes</strong></td><td>${(detail.config.allowed_bind_modes || []).join(', ') || 'all'}</td></tr>
+                            </tbody>
+                        </table>
+                        <a href="#/connconfigs"><button class="secondary" style="margin-top: 0.5rem">View Client Config</button></a>
+                    `
+                    : html`<p style="color: #888; margin-top: 1rem">Using legacy/test authentication</p>`
+                }
+            </div>
+        `;
+    }
+
     return html`
         <h2>Connections
             <button style="margin-left: 1rem; font-size: 0.8rem; padding: 0.3rem 0.8rem"
@@ -318,32 +387,26 @@ function ConnectionsPage() {
                 <table>
                     <thead>
                         <tr>
-                            <th>ID</th>
                             <th>System ID</th>
-                            <th>Remote Address</th>
+                            <th>Remote IP</th>
                             <th>Bind Mode</th>
-                            <th>Bound Since</th>
-                            <th>In-Flight</th>
-                            <th>Total Submits</th>
-                            <th>Current TPS</th>
-                            <th>Config</th>
+                            <th>Uptime</th>
+                            <th>TPS</th>
+                            <th>Submits</th>
+                            <th>Status</th>
                         </tr>
                     </thead>
                     <tbody>
                         ${conns.map(c => html`
-                            <tr key=${c.id}>
-                                <td><code>${c.id}</code></td>
-                                <td>${c.system_id}</td>
+                            <tr key=${c.id} onClick=${() => selectConn(c.id)}
+                                style="cursor: pointer">
+                                <td><code>${c.system_id}</code></td>
                                 <td>${c.remote_addr}</td>
                                 <td>${c.bind_mode || 'transceiver'}</td>
-                                <td>${new Date(c.bound_since).toLocaleString()}</td>
-                                <td>${c.in_flight}</td>
-                                <td>${fmt(c.total_submits)}</td>
+                                <td>${relativeTime(c.bound_since)}</td>
                                 <td>${fmt(c.current_tps)}</td>
-                                <td>${c.has_config
-                                    ? html`<a href="#/connconfigs">configured</a>`
-                                    : 'global'
-                                }</td>
+                                <td>${fmt(c.total_submits)}</td>
+                                <td>${statusBadge('healthy')}</td>
                             </tr>
                         `)}
                     </tbody>
@@ -369,11 +432,11 @@ function ConnConfigsPage() {
     const [description, setDescription] = useState('');
     const [enabled, setEnabled] = useState(true);
     const [allowedIps, setAllowedIps] = useState('');
-    const [maxTps, setMaxTps] = useState('0');
+    const [maxTps, setMaxTps] = useState('100');
     const [costPerSms, setCostPerSms] = useState('0');
     const [allowedPrefixes, setAllowedPrefixes] = useState('');
     const [defaultSourceAddr, setDefaultSourceAddr] = useState('');
-    const [maxBinds, setMaxBinds] = useState('0');
+    const [maxBinds, setMaxBinds] = useState('2');
     const [bindTransceiver, setBindTransceiver] = useState(true);
     const [bindTransmitter, setBindTransmitter] = useState(true);
     const [bindReceiver, setBindReceiver] = useState(true);
@@ -385,11 +448,11 @@ function ConnConfigsPage() {
         setDescription('');
         setEnabled(true);
         setAllowedIps('');
-        setMaxTps('0');
+        setMaxTps('100');
         setCostPerSms('0');
         setAllowedPrefixes('');
         setDefaultSourceAddr('');
-        setMaxBinds('0');
+        setMaxBinds('2');
         setBindTransceiver(true);
         setBindTransmitter(true);
         setBindReceiver(true);
@@ -593,7 +656,10 @@ function ConnConfigsPage() {
                                 <td><code>${c.system_id}</code></td>
                                 <td>${c.description || ''}</td>
                                 <td>${statusBadge(c.enabled ? 'healthy' : 'unhealthy')}</td>
-                                <td>${connCountBySystemId[c.system_id] || 0}</td>
+                                <td>${connCountBySystemId[c.system_id]
+                                    ? html`<span style="color: #22c55e; margin-right: 0.3rem">&#9679;</span>${connCountBySystemId[c.system_id]}`
+                                    : html`<span style="color: #888">0</span>`
+                                }</td>
                                 <td>${c.max_tps || 'unlimited'}</td>
                                 <td>${c.cost_per_sms ? c.cost_per_sms.toFixed(2) : '0.00'}</td>
                                 <td>${(() => {
@@ -839,7 +905,7 @@ function RoutesPage() {
         Promise.all([
             api('GET', '/admin/api/routes/mt').then(d => setMTRoutes(d || [])),
             api('GET', '/admin/api/routes/mo').then(d => setMORoutes(d || [])),
-            api('GET', '/admin/api/stats').then(d => setPoolNames(d.pool_names || [])),
+            api('GET', '/admin/api/pools').then(d => setPoolNames((d || []).map(p => p.name))),
             api('GET', '/admin/api/connections').then(d => setConnections(d || [])),
         ]).catch(() => {}).finally(() => setLoading(false));
     }, []);
@@ -966,11 +1032,7 @@ function RoutesPage() {
                         </div>
                     `
                     : html`
-                        <label>Pools (comma-separated, name or name:cost)
-                            <input type="text" value=${mtPools}
-                                   placeholder="e.g. pool-a, pool-b:0.05"
-                                   onInput=${e => setMTPools(e.target.value)} required />
-                        </label>
+                        <p style="color: #888">No pools available. <a href="#/pools">Create a pool first</a>.</p>
                     `
                 }
                 <button type="submit">Add MT Route</button>
@@ -1038,8 +1100,8 @@ function RoutesPage() {
                                 ? html`<select value=${moTargetConnID}
                                                onChange=${e => setMOTargetConnID(e.target.value)}>
                                     <option value="">-- select connection --</option>
-                                    ${connections.map(c => html`
-                                        <option key=${c.id} value=${c.id}>${c.id} (${c.system_id})</option>
+                                    ${[...new Set(connections.map(c => c.system_id))].map(sid => html`
+                                        <option key=${sid} value=${sid}>${sid}</option>
                                     `)}
                                   </select>`
                                 : html`<input type="text" value=${moTargetConnID}

@@ -199,7 +199,7 @@ func (c *Connection) handleBind(pdu *smpp.PDU, cfg BindConfig) bool {
 	c.BindMode = bindModeFromCommandID(pdu.CommandID)
 	c.logger = c.logger.With(zap.String("system_id", systemID))
 
-	// Try per-connection config first.
+	// Authenticate via per-connection config store (production path).
 	if cfg.ConnConfigStore != nil {
 		connCfg, err := cfg.ConnConfigStore.Authenticate(systemID, password)
 		if connCfg != nil {
@@ -244,19 +244,23 @@ func (c *Connection) handleBind(pdu *smpp.PDU, cfg BindConfig) bool {
 			}
 
 			c.connConfig = connCfg
-			// Per-connection auth succeeded — skip global auth, proceed to bind response.
+			// Per-connection auth succeeded — proceed to bind response.
 		} else if err != nil {
 			// Found but auth failed (wrong password or disabled).
 			c.logger.Warn("bind rejected: authentication failed", zap.Error(err))
 			_ = c.sendResponse(respCmdID, smpp.StatusInvPaswd, pdu.SequenceNumber, []byte{0x00})
 			return false
+		} else {
+			// Not found — reject with clear message (no fallback to global).
+			c.logger.Warn("bind rejected: no client config for system_id",
+				zap.String("system_id", systemID),
+			)
+			_ = c.sendResponse(respCmdID, smpp.StatusInvBnd, pdu.SequenceNumber, []byte{0x00})
+			return false
 		}
-		// If connCfg == nil && err == nil, not found — fall through to global.
-	}
-
-	// Fall through to global password check (existing code) only if no
-	// per-connection config was matched.
-	if c.connConfig == nil {
+	} else {
+		// ConnConfigStore is nil — test/legacy path only.
+		// Fall back to global password check.
 		if cfg.Password != "" && password != cfg.Password {
 			c.logger.Warn("bind rejected: invalid password")
 			_ = c.sendResponse(respCmdID, smpp.StatusInvBnd, pdu.SequenceNumber, []byte{0x00})

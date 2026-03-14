@@ -17,7 +17,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/idnteq/go-smsc/gateway"
-	"github.com/idnteq/go-smsc/smpp"
 )
 
 func main() {
@@ -68,36 +67,40 @@ func run(ctx context.Context, logger *zap.Logger) error {
 		}
 	}
 
-	// Backward compat: if no pools configured via Pebble, create "default"
-	// pool from env vars and set it as the single southbound fallback.
-	if len(poolConfigs) == 0 {
-		smppCfg := smpp.Config{
-			Host:           cfg.SMSCHost,
-			Port:           cfg.SMSCPort,
-			SystemID:       cfg.SMSCSystemID,
-			Password:       cfg.SMSCPassword,
-			SourceAddr:     cfg.SMSCSourceAddr,
-			SourceAddrTON:  0x05,
-			SourceAddrNPI:  0x00,
-			EnquireLinkSec: 30,
-		}
-		poolCfg := smpp.PoolConfig{
+	// Bootstrap convenience: if no pools persisted in Pebble and GW_SMSC_HOST
+	// is configured, create a "default" pool via PoolManager so it gets
+	// persisted and can be managed via the admin UI afterwards.
+	if len(poolConfigs) == 0 && cfg.SMSCHost != "" {
+		defaultPoolCfg := &gateway.SouthboundPoolConfig{
+			Name:             "default",
+			Host:             cfg.SMSCHost,
+			Port:             cfg.SMSCPort,
+			SystemID:         cfg.SMSCSystemID,
+			Password:         cfg.SMSCPassword,
+			SourceAddr:       cfg.SMSCSourceAddr,
 			Connections:      cfg.PoolConnections,
 			WindowSize:       cfg.PoolWindowSize,
-			DeliverWorkers:   32,
-			DeliverQueueSize: 25000,
-			SubmitTimeout:    60 * time.Second,
+			BindMode:         cfg.BindMode,
+			InterfaceVersion: cfg.SMPPVersion,
 		}
-		pool := smpp.NewPool(smppCfg, poolCfg, router.HandleDeliver, logger.Named("smpp-pool"))
-		router.SetSouthbound(pool)
-
-		if err := pool.Connect(ctx); err != nil {
-			return err
+		if err := poolManager.Add(ctx, defaultPoolCfg); err != nil {
+			logger.Warn("bootstrap default pool failed (create pools via admin UI)",
+				zap.Error(err),
+			)
+		} else {
+			// Persist so subsequent startups load from Pebble.
+			if err := routeConfig.SavePoolConfig(defaultPoolCfg); err != nil {
+				logger.Warn("failed to persist bootstrap default pool config", zap.Error(err))
+			}
+			logger.Info("bootstrap: created default pool from env vars",
+				zap.String("host", cfg.SMSCHost),
+				zap.Int("port", cfg.SMSCPort),
+			)
 		}
-		defer func() { _ = pool.Close() }()
-	} else {
-		defer poolManager.Close()
+	} else if len(poolConfigs) == 0 {
+		logger.Info("No southbound pools configured — create pools via admin UI")
 	}
+	defer poolManager.Close()
 
 	// Load route tables from Pebble.
 	mtRoutes, _ := routeConfig.LoadAllMTRoutes()

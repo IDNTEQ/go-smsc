@@ -457,6 +457,66 @@ type ConnectionInfo struct {
 	HasConfig    bool      `json:"has_config"`
 }
 
+// ConnectionDetail extends ConnectionInfo with optional client config details.
+type ConnectionDetail struct {
+	ConnectionInfo
+	Config *ConnectionConfigSummary `json:"config,omitempty"`
+}
+
+// ConnectionConfigSummary is a safe subset of ConnectionConfig for API responses.
+type ConnectionConfigSummary struct {
+	SystemID         string   `json:"system_id"`
+	Description      string   `json:"description"`
+	Enabled          bool     `json:"enabled"`
+	MaxTPS           int      `json:"max_tps"`
+	CostPerSMS       float64  `json:"cost_per_sms"`
+	AllowedPrefixes  []string `json:"allowed_prefixes"`
+	AllowedIPs       []string `json:"allowed_ips"`
+	MaxBinds         int      `json:"max_binds"`
+	AllowedBindModes []string `json:"allowed_bind_modes"`
+}
+
+// GetConnectionDetail returns full details for a single bound connection by ID.
+func (s *Server) GetConnectionDetail(connID string) *ConnectionDetail {
+	s.connMu.RLock()
+	defer s.connMu.RUnlock()
+
+	c, ok := s.conns[connID]
+	if !ok || !c.IsBound() {
+		return nil
+	}
+
+	detail := &ConnectionDetail{
+		ConnectionInfo: ConnectionInfo{
+			ID:           c.ID,
+			SystemID:     c.SystemID,
+			RemoteAddr:   c.conn.RemoteAddr().String(),
+			BoundSince:   c.createdAt,
+			InFlight:     c.InFlightCount(),
+			BindMode:     bindModeName(c.BindMode),
+			TotalSubmits: c.TotalSubmits(),
+			CurrentTPS:   c.CurrentTPS(),
+			HasConfig:    c.connConfig != nil,
+		},
+	}
+
+	if c.connConfig != nil {
+		detail.Config = &ConnectionConfigSummary{
+			SystemID:         c.connConfig.SystemID,
+			Description:      c.connConfig.Description,
+			Enabled:          c.connConfig.Enabled,
+			MaxTPS:           c.connConfig.MaxTPS,
+			CostPerSMS:       c.connConfig.CostPerSMS,
+			AllowedPrefixes:  c.connConfig.AllowedPrefixes,
+			AllowedIPs:       c.connConfig.AllowedIPs,
+			MaxBinds:         c.connConfig.MaxBinds,
+			AllowedBindModes: c.connConfig.AllowedBindModes,
+		}
+	}
+
+	return detail
+}
+
 // ListConnections returns details of all bound connections.
 func (s *Server) ListConnections() []ConnectionInfo {
 	s.connMu.RLock()

@@ -59,6 +59,7 @@ func (a *AdminAPI) RegisterRoutes(mux *http.ServeMux) {
 	// All other routes require JWT auth
 	mux.Handle("GET /admin/api/stats", auth(http.HandlerFunc(a.handleStats)))
 	mux.Handle("GET /admin/api/connections", auth(http.HandlerFunc(a.handleConnections)))
+	mux.Handle("GET /admin/api/connections/{id}", auth(http.HandlerFunc(a.handleConnectionDetail)))
 
 	// MT Routes
 	mux.Handle("GET /admin/api/routes/mt", auth(http.HandlerFunc(a.handleListMTRoutes)))
@@ -150,6 +151,20 @@ func (a *AdminAPI) handleStats(w http.ResponseWriter, r *http.Request) {
 func (a *AdminAPI) handleConnections(w http.ResponseWriter, r *http.Request) {
 	conns := a.server.ListConnections()
 	writeJSON(w, http.StatusOK, conns)
+}
+
+func (a *AdminAPI) handleConnectionDetail(w http.ResponseWriter, r *http.Request) {
+	connID := r.PathValue("id")
+	if a.server == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	detail := a.server.GetConnectionDetail(connID)
+	if detail == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "connection not found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, detail)
 }
 
 // --- MT Routes CRUD ---
