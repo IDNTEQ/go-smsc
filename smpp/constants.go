@@ -100,6 +100,17 @@ const (
 )
 
 // ---------------------------------------------------------------------------
+// Registered delivery flags.
+// ---------------------------------------------------------------------------
+
+const (
+	RegDeliveryNone    byte = 0x00 // No delivery receipt
+	RegDeliveryBoth    byte = 0x01 // Success + failure delivery receipts
+	RegDeliveryFailure byte = 0x02 // Failure only delivery receipt
+	RegDeliverySuccess byte = 0x03 // Success only delivery receipt (SMPP 5.0)
+)
+
+// ---------------------------------------------------------------------------
 // Message states (used in message_state TLV and query_sm_resp).
 // ---------------------------------------------------------------------------
 

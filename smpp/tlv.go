@@ -217,6 +217,45 @@ func (t TLVSet) Encode() []byte {
 	return buf
 }
 
+// ---------------------------------------------------------------------------
+// Convenience getters for SMPP 5.0 TLVs
+// ---------------------------------------------------------------------------
+
+// CongestionState returns the congestion_state TLV value (0-99),
+// or -1 if the TLV is not present.
+func (t TLVSet) CongestionState() int {
+	v, ok := t.GetUint8(TagCongestionState)
+	if !ok {
+		return -1
+	}
+	return int(v)
+}
+
+// SourceNetworkID returns the source_network_id TLV value.
+func (t TLVSet) SourceNetworkID() (string, bool) {
+	return t.GetString(TagSourceNetworkID)
+}
+
+// DestNetworkID returns the dest_network_id TLV value.
+func (t TLVSet) DestNetworkID() (string, bool) {
+	return t.GetString(TagDestNetworkID)
+}
+
+// SourceNodeID returns the source_node_id TLV value.
+func (t TLVSet) SourceNodeID() (string, bool) {
+	return t.GetString(TagSourceNodeID)
+}
+
+// DestNodeID returns the dest_node_id TLV value.
+func (t TLVSet) DestNodeID() (string, bool) {
+	return t.GetString(TagDestNodeID)
+}
+
+// BillingIdentification returns the billing_identification TLV value.
+func (t TLVSet) BillingIdentification() ([]byte, bool) {
+	return t.GetBytes(TagBillingIdentification)
+}
+
 // DecodeTLVs parses wire-format TLV bytes into a TLVSet. An empty or nil
 // input returns an empty (non-nil) TLVSet. Returns an error if the data is
 // truncated (not enough bytes for a TLV header or declared value length).

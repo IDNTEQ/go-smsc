@@ -40,6 +40,24 @@ func MandatoryBodyLen(commandID uint32, body []byte) int {
 	case CmdAlertNotification:
 		return mandatoryLenAlertNotification(body)
 
+	case CmdBroadcastSM:
+		return mandatoryLenBroadcastSM(body)
+
+	case CmdBroadcastSMResp:
+		return mandatoryLenCStringOnly(body)
+
+	case CmdQueryBroadcastSM:
+		return mandatoryLenQueryBroadcastSM(body)
+
+	case CmdQueryBroadcastSMResp:
+		return mandatoryLenQueryBroadcastSMResp(body)
+
+	case CmdCancelBroadcastSM:
+		return mandatoryLenCancelBroadcastSM(body)
+
+	case CmdCancelBroadcastSMResp:
+		return 0
+
 	case CmdCancelSMResp, CmdReplaceSMResp:
 		return 0
 
@@ -448,6 +466,149 @@ func mandatoryLenAlertNotification(body []byte) int {
 	offset += 2
 
 	// esme_addr (C-string)
+	offset = skipCString(body, offset)
+	if offset < 0 {
+		return -1
+	}
+
+	return offset
+}
+
+// mandatoryLenBroadcastSM calculates the mandatory field length for broadcast_sm.
+// Layout: service_type(C) + source_addr_ton(1) + source_addr_npi(1) + source_addr(C)
+//
+//	+ message_id(C) + priority_flag(1) + schedule_delivery_time(C) + validity_period(C)
+//	+ replace_if_present(1) + data_coding(1) + sm_default_msg_id(1)
+func mandatoryLenBroadcastSM(body []byte) int {
+	offset := 0
+	n := len(body)
+
+	// service_type (C-string)
+	offset = skipCString(body, offset)
+	if offset < 0 {
+		return -1
+	}
+
+	// source_addr_ton(1) + source_addr_npi(1)
+	if offset+2 > n {
+		return -1
+	}
+	offset += 2
+
+	// source_addr (C-string)
+	offset = skipCString(body, offset)
+	if offset < 0 {
+		return -1
+	}
+
+	// message_id (C-string)
+	offset = skipCString(body, offset)
+	if offset < 0 {
+		return -1
+	}
+
+	// priority_flag(1)
+	if offset+1 > n {
+		return -1
+	}
+	offset++
+
+	// schedule_delivery_time (C-string)
+	offset = skipCString(body, offset)
+	if offset < 0 {
+		return -1
+	}
+
+	// validity_period (C-string)
+	offset = skipCString(body, offset)
+	if offset < 0 {
+		return -1
+	}
+
+	// replace_if_present(1) + data_coding(1) + sm_default_msg_id(1)
+	if offset+3 > n {
+		return -1
+	}
+	offset += 3
+
+	return offset
+}
+
+// mandatoryLenQueryBroadcastSM calculates the mandatory field length for
+// query_broadcast_sm. Layout: message_id(C) + source_addr_ton(1) +
+// source_addr_npi(1) + source_addr(C)
+func mandatoryLenQueryBroadcastSM(body []byte) int {
+	offset := 0
+	n := len(body)
+
+	// message_id (C-string)
+	offset = skipCString(body, offset)
+	if offset < 0 {
+		return -1
+	}
+
+	// source_addr_ton(1) + source_addr_npi(1)
+	if offset+2 > n {
+		return -1
+	}
+	offset += 2
+
+	// source_addr (C-string)
+	offset = skipCString(body, offset)
+	if offset < 0 {
+		return -1
+	}
+
+	return offset
+}
+
+// mandatoryLenQueryBroadcastSMResp calculates the mandatory field length for
+// query_broadcast_sm_resp. Layout: message_id(C) + message_state(1)
+func mandatoryLenQueryBroadcastSMResp(body []byte) int {
+	offset := 0
+	n := len(body)
+
+	// message_id (C-string)
+	offset = skipCString(body, offset)
+	if offset < 0 {
+		return -1
+	}
+
+	// message_state(1)
+	if offset+1 > n {
+		return -1
+	}
+	offset++
+
+	return offset
+}
+
+// mandatoryLenCancelBroadcastSM calculates the mandatory field length for
+// cancel_broadcast_sm. Layout: service_type(C) + message_id(C) +
+// source_addr_ton(1) + source_addr_npi(1) + source_addr(C)
+func mandatoryLenCancelBroadcastSM(body []byte) int {
+	offset := 0
+	n := len(body)
+
+	// service_type (C-string)
+	offset = skipCString(body, offset)
+	if offset < 0 {
+		return -1
+	}
+
+	// message_id (C-string)
+	offset = skipCString(body, offset)
+	if offset < 0 {
+		return -1
+	}
+
+	// source_addr_ton(1) + source_addr_npi(1)
+	if offset+2 > n {
+		return -1
+	}
+	offset += 2
+
+	// source_addr (C-string)
 	offset = skipCString(body, offset)
 	if offset < 0 {
 		return -1
