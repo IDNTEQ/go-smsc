@@ -8,6 +8,7 @@ on:
 permissions:
   contents: write
   packages: write
+  id-token: write  # needed for cosign keyless signing
 
 jobs:
   release:
@@ -25,10 +26,20 @@ jobs:
       - name: Build binaries
         run: |
           mkdir -p dist
-          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o dist/smsc-gateway-linux-amd64 ./cmd/smsc-gateway
-          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o dist/smsc-gateway-linux-arm64 ./cmd/smsc-gateway
-          GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -o dist/smsc-gateway-darwin-amd64 ./cmd/smsc-gateway
-          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -o dist/smsc-gateway-darwin-arm64 ./cmd/smsc-gateway
+          # Linux
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o dist/smsc-gateway-linux-amd64 ./cmd/smsc-gateway
+          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o dist/smsc-gateway-linux-arm64 ./cmd/smsc-gateway
+          # macOS
+          GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o dist/smsc-gateway-darwin-amd64 ./cmd/smsc-gateway
+          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o dist/smsc-gateway-darwin-arm64 ./cmd/smsc-gateway
+          # Windows
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o dist/smsc-gateway-windows-amd64.exe ./cmd/smsc-gateway
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum * > checksums.txt
+          cat checksums.txt
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -42,6 +53,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -53,12 +70,22 @@ jobs:
         id: version
         run: echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push
+      - name: Build and push (multi-arch)
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           file: cmd/smsc-gateway/Dockerfile
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: |
             ghcr.io/${{ github.repository }}:${{ steps.version.outputs.tag }}
             ghcr.io/${{ github.repository }}:latest
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign Docker image
+        run: |
+          cosign sign --yes \
+            ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}

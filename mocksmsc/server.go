@@ -66,10 +66,19 @@ func (s *Server) Start() error {
 		return fmt.Errorf("listen on %s: %w", addr, err)
 	}
 	s.listener = listener
-	s.logger.Info("mock SMSC listening", zap.String("addr", addr))
+	s.logger.Info("mock SMSC listening", zap.String("addr", listener.Addr().String()))
 
 	go s.acceptLoop()
 	return nil
+}
+
+// Port returns the TCP port the server is listening on.
+// Useful when Config.Port is 0 (auto-assign).
+func (s *Server) Port() int {
+	if s.listener == nil {
+		return 0
+	}
+	return s.listener.Addr().(*net.TCPAddr).Port
 }
 
 // Stop gracefully shuts down the server, closing all client connections.
