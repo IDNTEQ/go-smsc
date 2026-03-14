@@ -735,7 +735,7 @@ function ConnConfigsPage() {
                                 <td>${c.description || ''}</td>
                                 <td>${statusBadge(c.enabled ? 'healthy' : 'unhealthy')}</td>
                                 <td>${connCountBySystemId[c.system_id]
-                                    ? html`<span style="color: #22c55e; margin-right: 0.3rem">&#9679;</span>${connCountBySystemId[c.system_id]}`
+                                    ? html`<span style="color: #22c55e; margin-right: 0.3rem">●</span>${connCountBySystemId[c.system_id]}`
                                     : html`<span style="color: #888">0</span>`
                                 }</td>
                                 <td>${c.max_tps || 'unlimited'}</td>
