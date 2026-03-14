@@ -491,6 +491,48 @@ func ParseSubmitSMAddresses(body []byte) (sourceAddr, destAddr string) {
 	return sourceAddr, destAddr
 }
 
+// RewriteSubmitSMSource replaces the source address (and TON/NPI) in a
+// submit_sm body, preserving all other fields byte-for-byte. Returns the
+// modified body. If the body is malformed, returns it unchanged.
+//
+// submit_sm body layout:
+//   service_type(C) + source_addr_ton(1) + source_addr_npi(1) + source_addr(C) + rest...
+func RewriteSubmitSMSource(body []byte, newAddr string, newTON, newNPI byte) []byte {
+	if len(body) == 0 {
+		return body
+	}
+	offset := 0
+
+	// service_type (C-string) — preserve as-is
+	_, offset = readCString(body, offset)
+	if offset >= len(body) {
+		return body
+	}
+	serviceTypeEnd := offset // byte after service_type null terminator
+
+	// Skip source_addr_ton + source_addr_npi (2 bytes)
+	if offset+2 > len(body) {
+		return body
+	}
+	offset += 2
+
+	// source_addr (C-string) — find the end to know what to replace
+	_, offset = readCString(body, offset)
+	if offset > len(body) {
+		return body
+	}
+	sourceAddrEnd := offset // byte after source_addr null terminator
+
+	// Build new body: service_type + new TON/NPI + new source_addr + rest
+	var buf []byte
+	buf = append(buf, body[:serviceTypeEnd]...)  // service_type (unchanged)
+	buf = append(buf, newTON, newNPI)            // new TON/NPI
+	buf = append(buf, []byte(newAddr)...)         // new source_addr
+	buf = append(buf, 0x00)                       // null terminator
+	buf = append(buf, body[sourceAddrEnd:]...)    // dest_addr_ton + rest (unchanged)
+	return buf
+}
+
 // BuildDeliverSMBody constructs a deliver_sm body for forwarding.
 // TODO: refactor to use smpp.TLVSet for the message_payload TLV instead of raw byte
 // manipulation. This would require changing the return type or approach since

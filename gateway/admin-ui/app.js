@@ -272,7 +272,7 @@ function DashboardPage() {
                         ${messages.map(m => html`
                             <tr key=${m.gw_msg_id}>
                                 <td>${formatTime(m.created_at)}</td>
-                                <td>${m.source_addr}<span class="message-arrow">&rarr;</span>${m.dest_addr}</td>
+                                <td>${m.source_addr}<span class="message-arrow"> → </span>${m.dest_addr}</td>
                                 <td>${statusBadge(m.status)}</td>
                             </tr>
                         `)}
@@ -386,7 +386,7 @@ function ConnectionsPage() {
             </button>
         </h2>
 
-        <h3>Inbound - Upstream (Clients &rarr; Gateway)</h3>
+        <h3>Inbound - Upstream (Clients → Gateway)</h3>
         ${conns.length === 0 && !loading
             ? html`<p style="color: var(--pico-muted-color)">No inbound connections.</p>`
             : html`
@@ -420,7 +420,7 @@ function ConnectionsPage() {
             `
         }
 
-        <h3 style="margin-top: 2rem">Outbound - Downstream (Gateway &rarr; SMSCs)</h3>
+        <h3 style="margin-top: 2rem">Outbound - Downstream (Gateway → SMSCs)</h3>
         ${pools.length === 0 && !loading
             ? html`<p style="color: var(--pico-muted-color)">No outbound binds configured. <a href="#/binds">Add a bind</a>.</p>`
             : html`
@@ -477,6 +477,9 @@ function ConnConfigsPage() {
     const [costPerSms, setCostPerSms] = useState('0');
     const [allowedPrefixes, setAllowedPrefixes] = useState('');
     const [defaultSourceAddr, setDefaultSourceAddr] = useState('');
+    const [sourceAddrMode, setSourceAddrMode] = useState('passthrough');
+    const [forceSourceAddr, setForceSourceAddr] = useState('');
+    const [allowedSourceAddrs, setAllowedSourceAddrs] = useState('');
     const [maxBinds, setMaxBinds] = useState('2');
     const [bindTransceiver, setBindTransceiver] = useState(true);
     const [bindTransmitter, setBindTransmitter] = useState(true);
@@ -493,6 +496,9 @@ function ConnConfigsPage() {
         setCostPerSms('0');
         setAllowedPrefixes('');
         setDefaultSourceAddr('');
+        setSourceAddrMode('passthrough');
+        setForceSourceAddr('');
+        setAllowedSourceAddrs('');
         setMaxBinds('2');
         setBindTransceiver(true);
         setBindTransmitter(true);
@@ -527,6 +533,9 @@ function ConnConfigsPage() {
             setCostPerSms(String(cfg.cost_per_sms || 0));
             setAllowedPrefixes(arrayToText(cfg.allowed_prefixes));
             setDefaultSourceAddr(cfg.default_source_addr || '');
+            setSourceAddrMode(cfg.source_addr_mode || 'passthrough');
+            setForceSourceAddr(cfg.force_source_addr || '');
+            setAllowedSourceAddrs(arrayToText(cfg.allowed_source_addrs));
             setMaxBinds(String(cfg.max_binds || 0));
             const modes = cfg.allowed_bind_modes || [];
             setBindTransceiver(modes.length === 0 || modes.includes('transceiver'));
@@ -554,6 +563,9 @@ function ConnConfigsPage() {
             cost_per_sms: parseFloat(costPerSms) || 0,
             allowed_prefixes: textToArray(allowedPrefixes),
             default_source_addr: defaultSourceAddr,
+            source_addr_mode: sourceAddrMode,
+            force_source_addr: forceSourceAddr,
+            allowed_source_addrs: textToArray(allowedSourceAddrs),
             max_binds: parseInt(maxBinds) || 0,
             allowed_bind_modes: modes,
         };
@@ -623,8 +635,33 @@ function ConnConfigsPage() {
                     </label>
                     <label>Default Source Addr
                         <input type="text" value=${defaultSourceAddr}
+                               placeholder="Used when mode=default"
                                onInput=${e => setDefaultSourceAddr(e.target.value)} />
                     </label>
+                </div>
+                <div class="form-grid">
+                    <label>Source Address Mode
+                        <select value=${sourceAddrMode} onChange=${e => setSourceAddrMode(e.target.value)}>
+                            <option value="passthrough">Passthrough (forward as-is)</option>
+                            <option value="default">Default (fill empty source)</option>
+                            <option value="override">Override (always replace)</option>
+                            <option value="whitelist">Whitelist (restrict allowed)</option>
+                        </select>
+                    </label>
+                    ${sourceAddrMode === 'override' ? html`
+                        <label>Force Source Addr
+                            <input type="text" value=${forceSourceAddr}
+                                   placeholder="Replaces client's source"
+                                   onInput=${e => setForceSourceAddr(e.target.value)} />
+                        </label>
+                    ` : ''}
+                    ${sourceAddrMode === 'whitelist' ? html`
+                        <label>Allowed Source Addrs
+                            <textarea rows="3" value=${allowedSourceAddrs}
+                                      placeholder="One address per line"
+                                      onInput=${e => setAllowedSourceAddrs(e.target.value)}></textarea>
+                        </label>
+                    ` : ''}
                 </div>
                 <div class="form-grid">
                     <label>Allowed IPs
@@ -1345,7 +1382,7 @@ function MessagesPage() {
                                 <td>${formatTime(m.created_at)}</td>
                                 <td title=${m.gw_msg_id}><code>${(m.gw_msg_id || '').substring(0, 12)}</code></td>
                                 <td>${m.conn_id}</td>
-                                <td>${m.source_addr}<span class="message-arrow">&rarr;</span>${m.dest_addr}</td>
+                                <td>${m.source_addr}<span class="message-arrow"> → </span>${m.dest_addr}</td>
                                 <td>${statusBadge(m.status)}</td>
                                 <td>${m.dlr_status || ''}</td>
                                 <td>${m.cost > 0 ? m.cost.toFixed(2) : ''}</td>

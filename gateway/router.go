@@ -253,6 +253,56 @@ func (r *Router) HandleSubmit(connID string, seqNum uint32, body []byte) {
 
 	c := r.server.GetConnection(connID)
 
+	// Source address enforcement based on client config.
+	if c != nil && c.ConnConfig() != nil {
+		cfg := c.ConnConfig()
+		switch cfg.SourceAddrMode {
+		case SourceAddrModeOverride:
+			// Always replace source with forced address.
+			if cfg.ForceSourceAddr != "" {
+				body = RewriteSubmitSMSource(body, cfg.ForceSourceAddr, cfg.ForceSourceTON, cfg.ForceSourceNPI)
+				sourceAddr = cfg.ForceSourceAddr
+			}
+		case SourceAddrModeDefault:
+			// Fill in default only when client sends empty source.
+			if sourceAddr == "" && cfg.DefaultSourceAddr != "" {
+				body = RewriteSubmitSMSource(body, cfg.DefaultSourceAddr, cfg.DefaultSourceTON, cfg.DefaultSourceNPI)
+				sourceAddr = cfg.DefaultSourceAddr
+			}
+		case SourceAddrModeWhitelist:
+			// Reject if source not in allowed list.
+			if len(cfg.AllowedSourceAddrs) > 0 {
+				allowed := false
+				for _, a := range cfg.AllowedSourceAddrs {
+					if a == sourceAddr {
+						allowed = true
+						break
+					}
+				}
+				if !allowed {
+					r.logger.Debug("submit blocked by source address whitelist",
+						zap.String("conn_id", connID),
+						zap.String("source", sourceAddr),
+					)
+					if r.store != nil {
+						_ = r.store.LogMessage(&MessageLogEntry{
+							GwMsgID:    fmt.Sprintf("rejected-%d", r.msgSeq.Add(1)),
+							ConnID:     connID,
+							SourceAddr: sourceAddr,
+							DestAddr:   destAddr,
+							Status:     "rejected",
+						})
+					}
+					if c != nil {
+						_ = c.SendSubmitSMResp(seqNum, smpp.StatusSubmitFail, "")
+					}
+					return
+				}
+			}
+		}
+		// SourceAddrModePassthrough (default): do nothing, forward as-is.
+	}
+
 	// Check MSISDN blacklist.
 	if destAddr != "" {
 		if _, blocked := r.blacklist.Get(destAddr); blocked {

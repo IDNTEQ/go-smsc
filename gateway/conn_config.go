@@ -9,23 +9,43 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// SourceAddrMode controls how the gateway handles source addresses for a client.
+type SourceAddrMode string
+
+const (
+	// SourceAddrModePassthrough forwards whatever source address the client sends (default).
+	SourceAddrModePassthrough SourceAddrMode = "passthrough"
+	// SourceAddrModeDefault uses DefaultSourceAddr when the client sends an empty source.
+	SourceAddrModeDefault SourceAddrMode = "default"
+	// SourceAddrModeOverride always replaces the source address with ForceSourceAddr.
+	SourceAddrModeOverride SourceAddrMode = "override"
+	// SourceAddrModeWhitelist allows only source addresses in AllowedSourceAddrs.
+	// If the client sends an unlisted address, the submit is rejected.
+	SourceAddrModeWhitelist SourceAddrMode = "whitelist"
+)
+
 // ConnectionConfig holds per-connection SMPP client configuration.
 type ConnectionConfig struct {
-	SystemID          string    `json:"system_id"`
-	Password          string    `json:"password"`             // bcrypt hash
-	Description       string    `json:"description"`
-	Enabled           bool      `json:"enabled"`
-	AllowedIPs        []string  `json:"allowed_ips"`          // empty = allow all
-	MaxTPS            int       `json:"max_tps"`              // 0 = unlimited
-	CostPerSMS        float64   `json:"cost_per_sms"`
-	AllowedPrefixes   []string  `json:"allowed_prefixes"`     // empty = allow all
-	DefaultSourceAddr string    `json:"default_source_addr"`
-	DefaultSourceTON  byte      `json:"default_source_ton"`
-	DefaultSourceNPI  byte      `json:"default_source_npi"`
-	MaxBinds          int       `json:"max_binds"`            // 0 = unlimited
-	AllowedBindModes  []string  `json:"allowed_bind_modes"`   // empty = all
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	SystemID          string         `json:"system_id"`
+	Password          string         `json:"password"`             // bcrypt hash
+	Description       string         `json:"description"`
+	Enabled           bool           `json:"enabled"`
+	AllowedIPs        []string       `json:"allowed_ips"`          // empty = allow all
+	MaxTPS            int            `json:"max_tps"`              // 0 = unlimited
+	CostPerSMS        float64        `json:"cost_per_sms"`
+	AllowedPrefixes   []string       `json:"allowed_prefixes"`     // empty = allow all destinations
+	DefaultSourceAddr string         `json:"default_source_addr"`
+	DefaultSourceTON  byte           `json:"default_source_ton"`
+	DefaultSourceNPI  byte           `json:"default_source_npi"`
+	SourceAddrMode    SourceAddrMode `json:"source_addr_mode"`     // passthrough, default, override, whitelist
+	ForceSourceAddr   string         `json:"force_source_addr"`    // used when mode=override
+	ForceSourceTON    byte           `json:"force_source_ton"`
+	ForceSourceNPI    byte           `json:"force_source_npi"`
+	AllowedSourceAddrs []string      `json:"allowed_source_addrs"` // used when mode=whitelist
+	MaxBinds          int            `json:"max_binds"`            // 0 = unlimited
+	AllowedBindModes  []string       `json:"allowed_bind_modes"`   // empty = all
+	CreatedAt         time.Time      `json:"created_at"`
+	UpdatedAt         time.Time      `json:"updated_at"`
 }
 
 // ConnectionConfigStore manages per-connection SMPP configurations in Pebble.
@@ -120,6 +140,11 @@ func (cs *ConnectionConfigStore) Update(cfg *ConnectionConfig) error {
 	existing.DefaultSourceAddr = cfg.DefaultSourceAddr
 	existing.DefaultSourceTON = cfg.DefaultSourceTON
 	existing.DefaultSourceNPI = cfg.DefaultSourceNPI
+	existing.SourceAddrMode = cfg.SourceAddrMode
+	existing.ForceSourceAddr = cfg.ForceSourceAddr
+	existing.ForceSourceTON = cfg.ForceSourceTON
+	existing.ForceSourceNPI = cfg.ForceSourceNPI
+	existing.AllowedSourceAddrs = cfg.AllowedSourceAddrs
 	existing.MaxBinds = cfg.MaxBinds
 	existing.AllowedBindModes = cfg.AllowedBindModes
 	existing.UpdatedAt = time.Now()
