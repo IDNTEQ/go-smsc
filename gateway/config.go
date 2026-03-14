@@ -76,6 +76,11 @@ type Config struct {
 
 	// Metrics
 	MetricsAddr string
+
+	// SMPP version negotiation
+	SMPPVersion         string // "3.4" or "5.0", from GW_SMPP_VERSION (default "3.4")
+	BindMode            string // "transceiver", "transmitter", "receiver", from GW_BIND_MODE (default "transceiver")
+	CongestionThreshold int    // 0-99, from GW_CONGESTION_THRESHOLD (default 80)
 }
 
 // LoadConfig reads configuration from environment variables.
@@ -136,6 +141,10 @@ func LoadConfig() Config {
 		DrainTimeoutSec: getEnvInt("GW_DRAIN_TIMEOUT_SEC", 10),
 
 		MetricsAddr: getEnv("GW_METRICS_ADDR", ":9090"),
+
+		SMPPVersion:         getEnv("GW_SMPP_VERSION", "3.4"),
+		BindMode:            getEnv("GW_BIND_MODE", "transceiver"),
+		CongestionThreshold: getEnvInt("GW_CONGESTION_THRESHOLD", 80),
 	}
 }
 

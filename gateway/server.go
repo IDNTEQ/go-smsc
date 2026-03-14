@@ -174,6 +174,7 @@ func (s *Server) handleConnection(c *Connection) {
 			Password:       s.cfg.ServerPassword,
 			AllowedEngines: s.cfg.AllowedEngines,
 			ServerSystemID: s.cfg.ServerSystemID,
+			SMPPVersion:    s.cfg.SMPPVersion,
 		},
 		s.onSubmit,
 		s.onDeliverResp,

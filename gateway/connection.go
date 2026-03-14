@@ -18,6 +18,7 @@ import (
 type Connection struct {
 	ID        string
 	SystemID  string
+	BindMode  smpp.BindMode // bind mode negotiated during bind
 	conn      net.Conn
 	writeMu   sync.Mutex
 	bound     bool
@@ -69,6 +70,7 @@ type BindConfig struct {
 	Password       string   // required password (empty = accept any)
 	AllowedEngines []string // system_id whitelist (empty = allow all)
 	ServerSystemID string   // system_id to present in bind_resp
+	SMPPVersion    string   // "3.4" or "5.0" — when "5.0", include sc_interface_version TLV in bind_resp
 }
 
 // ReadLoop reads PDUs from the engine and dispatches them. It blocks until
@@ -126,7 +128,7 @@ func (c *Connection) ReadLoop(
 		c.lastActivity.Store(time.Now().UnixNano())
 
 		switch pdu.CommandID {
-		case smpp.CmdBindTransceiver:
+		case smpp.CmdBindTransceiver, smpp.CmdBindTransmitter, smpp.CmdBindReceiver:
 			if c.handleBind(pdu, bindCfg) && onBind != nil {
 				onBind(c, c.SystemID)
 			}
@@ -156,18 +158,45 @@ func (c *Connection) ReadLoop(
 	}
 }
 
-// handleBind processes a bind_transceiver from the engine.
+// bindRespCommandID returns the appropriate bind response command ID for
+// the given bind request command ID.
+func bindRespCommandID(cmdID uint32) uint32 {
+	switch cmdID {
+	case smpp.CmdBindTransmitter:
+		return smpp.CmdBindTransmitterResp
+	case smpp.CmdBindReceiver:
+		return smpp.CmdBindReceiverResp
+	default:
+		return smpp.CmdBindTransceiverResp
+	}
+}
+
+// bindModeFromCommandID maps a bind request command ID to an smpp.BindMode.
+func bindModeFromCommandID(cmdID uint32) smpp.BindMode {
+	switch cmdID {
+	case smpp.CmdBindTransmitter:
+		return smpp.BindTransmitter
+	case smpp.CmdBindReceiver:
+		return smpp.BindReceiver
+	default:
+		return smpp.BindTransceiver
+	}
+}
+
+// handleBind processes a bind request (transceiver, transmitter, or receiver) from the engine.
 // Returns true if the bind succeeded.
 func (c *Connection) handleBind(pdu *smpp.PDU, cfg BindConfig) bool {
 	systemID, offset := readCString(pdu.Body, 0)
 	password, _ := readCString(pdu.Body, offset)
+
+	respCmdID := bindRespCommandID(pdu.CommandID)
 
 	c.SystemID = systemID
 	c.logger = c.logger.With(zap.String("system_id", systemID))
 
 	if cfg.Password != "" && password != cfg.Password {
 		c.logger.Warn("bind rejected: invalid password")
-		_ = c.sendResponse(smpp.CmdBindTransceiverResp, smpp.StatusInvBnd, pdu.SequenceNumber, []byte{0x00})
+		_ = c.sendResponse(respCmdID, smpp.StatusInvBnd, pdu.SequenceNumber, []byte{0x00})
 		return false
 	}
 
@@ -182,18 +211,28 @@ func (c *Connection) handleBind(pdu *smpp.PDU, cfg BindConfig) bool {
 		}
 		if !allowed {
 			c.logger.Warn("bind rejected: system_id not in allowed list")
-			_ = c.sendResponse(smpp.CmdBindTransceiverResp, smpp.StatusInvBnd, pdu.SequenceNumber, []byte{0x00})
+			_ = c.sendResponse(respCmdID, smpp.StatusInvBnd, pdu.SequenceNumber, []byte{0x00})
 			return false
 		}
 	}
 
-	// Send bind_transceiver_resp with configured gateway system_id.
+	// Build bind response body: system_id C-string + optional TLVs.
 	serverID := cfg.ServerSystemID
 	if serverID == "" {
 		serverID = "SMSCGW"
 	}
 	respBody := writeCStringBytes(serverID)
-	_ = c.sendResponse(smpp.CmdBindTransceiverResp, smpp.StatusOK, pdu.SequenceNumber, respBody)
+
+	// When configured for SMPP 5.0, include sc_interface_version TLV (0x0210)
+	// in the bind response to advertise 5.0 support.
+	if cfg.SMPPVersion == "5.0" {
+		tlvs := make(smpp.TLVSet)
+		tlvs.SetUint8(smpp.TagSCInterfaceVersion, 0x50)
+		respBody = append(respBody, tlvs.Encode()...)
+	}
+
+	_ = c.sendResponse(respCmdID, smpp.StatusOK, pdu.SequenceNumber, respBody)
+	c.BindMode = bindModeFromCommandID(pdu.CommandID)
 	c.bound = true
 	return true
 }
@@ -311,26 +350,15 @@ func (c *Connection) sendResponse(cmdID, status, seqNum uint32, body []byte) err
 }
 
 // readCString reads a null-terminated string from data starting at offset.
+// Delegates to the exported smpp.ReadCString.
 func readCString(data []byte, offset int) (string, int) {
-	if offset >= len(data) {
-		return "", offset
-	}
-	end := offset
-	for end < len(data) && data[end] != 0x00 {
-		end++
-	}
-	s := string(data[offset:end])
-	if end < len(data) {
-		end++
-	}
-	return s, end
+	return smpp.ReadCString(data, offset)
 }
 
 // writeCStringBytes creates a byte slice containing a null-terminated string.
+// Delegates to the exported smpp.WriteCStringBytes.
 func writeCStringBytes(s string) []byte {
-	b := make([]byte, len(s)+1)
-	copy(b, s)
-	return b
+	return smpp.WriteCStringBytes(s)
 }
 
 // ParseSubmitSMAddresses extracts source and destination addresses from a
@@ -371,6 +399,9 @@ func ParseSubmitSMAddresses(body []byte) (sourceAddr, destAddr string) {
 }
 
 // BuildDeliverSMBody constructs a deliver_sm body for forwarding.
+// TODO: refactor to use smpp.TLVSet for the message_payload TLV instead of raw byte
+// manipulation. This would require changing the return type or approach since
+// TLVs should ideally be set on the PDU's TLVs field rather than embedded in Body.
 func BuildDeliverSMBody(sourceAddr, destAddr string, esmClass byte, shortMessage []byte) []byte {
 	// Estimate buffer size: addresses + fixed fields + message
 	size := len(sourceAddr) + len(destAddr) + 20 + len(shortMessage)
@@ -410,6 +441,9 @@ func BuildDeliverSMBody(sourceAddr, destAddr string, esmClass byte, shortMessage
 // BuildSubmitSMBody constructs a minimal submit_sm body from source/dest
 // addresses and message text. Used by the REST API to inject messages into
 // the forwarding pipeline.
+// TODO: refactor to use smpp.TLVSet for the message_payload TLV instead of raw byte
+// manipulation. This would require changing the return type or approach since
+// TLVs should ideally be set on the PDU's TLVs field rather than embedded in Body.
 func BuildSubmitSMBody(sourceAddr, destAddr string, message []byte) []byte {
 	size := len(sourceAddr) + len(destAddr) + 20 + len(message)
 	buf := make([]byte, 0, size)

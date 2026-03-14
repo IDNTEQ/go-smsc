@@ -31,6 +31,10 @@ type Config struct {
 	// TLS
 	TLSEnabled            bool
 	TLSInsecureSkipVerify bool
+
+	// Bind
+	BindMode         BindMode // default: BindTransceiver (zero value)
+	InterfaceVersion byte     // default: 0x34 (set in NewClientWithWorkers if 0)
 }
 
 // SubmitRequest represents an SMS to submit via SMPP.
@@ -57,21 +61,30 @@ type SubmitResponse struct {
 // which prompts the SMSC to retry delivery.
 type DeliverHandler func(sourceAddr string, destAddr string, esmClass byte, payload []byte) error
 
+// QuerySMResponse contains the SMSC's response to a query_sm.
+type QuerySMResponse struct {
+	MessageID    string
+	FinalDate    string
+	MessageState byte
+	ErrorCode    byte
+}
+
 // Client manages an SMPP transceiver connection over raw TCP.
 type Client struct {
-	config           Config
-	handler          DeliverHandler
-	deliverWorkers   int
-	deliverQueueSize int
-	logger         *zap.Logger
-	mu             sync.Mutex
-	conn           net.Conn
-	bound          bool
-	seqNum         uint32
-	pending        map[uint32]chan *PDU
-	pendingMu      sync.Mutex
-	done           chan struct{}
-	deliverQ       chan deliverMessage
+	config             Config
+	handler            DeliverHandler
+	deliverWorkers     int
+	deliverQueueSize   int
+	negotiatedVersion  byte
+	logger             *zap.Logger
+	mu                 sync.Mutex
+	conn               net.Conn
+	bound              bool
+	seqNum             uint32
+	pending            map[uint32]chan *PDU
+	pendingMu          sync.Mutex
+	done               chan struct{}
+	deliverQ           chan deliverMessage
 
 	deliverQueueDepth     metric.Int64ObservableGauge
 	deliverBackpressure   metric.Int64Counter
@@ -97,6 +110,9 @@ func NewClient(config Config, handler DeliverHandler, logger *zap.Logger) *Clien
 func NewClientWithWorkers(config Config, handler DeliverHandler, deliverWorkers, deliverQueueSize int, logger *zap.Logger) *Client {
 	if config.EnquireLinkSec <= 0 {
 		config.EnquireLinkSec = 30
+	}
+	if config.InterfaceVersion == 0 {
+		config.InterfaceVersion = 0x34
 	}
 	if deliverWorkers <= 0 {
 		deliverWorkers = 8
@@ -173,38 +189,52 @@ func (c *Client) Connect(ctx context.Context) error {
 	c.startDeliverLoop()
 	go c.ReadLoop()
 
-	// Send bind_transceiver.
+	// Send bind PDU (transceiver, transmitter, or receiver).
 	seq := c.nextSeq()
-	bindBody := EncodeBindTransceiver(c.config.SystemID, c.config.Password, c.config.SystemType)
+	cmdID := bindCommandID(c.config.BindMode)
+	bindBody := EncodeBind(c.config.BindMode, c.config.SystemID, c.config.Password, c.config.SystemType, c.config.InterfaceVersion)
 	bindPDU := &PDU{
-		CommandID:      CmdBindTransceiver,
+		CommandID:      cmdID,
 		CommandStatus:  StatusOK,
 		SequenceNumber: seq,
 		Body:           bindBody,
 	}
 
 	respCh := c.registerPending(seq)
+	cmdName := CommandName(cmdID)
 
 	if err := c.writePDU(bindPDU); err != nil {
 		c.unregisterPending(seq)
 		_ = conn.Close()
-		return fmt.Errorf("send bind_transceiver: %w", err)
+		return fmt.Errorf("send %s: %w", cmdName, err)
 	}
 
 	// Wait for bind response.
+	respCmdID := bindRespCommandID(c.config.BindMode)
 	select {
 	case resp := <-respCh:
 		if resp.CommandStatus != StatusOK {
 			_ = conn.Close()
-			return fmt.Errorf("bind_transceiver failed with status 0x%08X", resp.CommandStatus)
+			return fmt.Errorf("%s failed with status 0x%08X", cmdName, resp.CommandStatus)
+		}
+		// Parse bind response to extract system_id and TLVs.
+		smscID, tlvs := ParseBindResp(respCmdID, resp.Body)
+		c.negotiatedVersion = c.config.InterfaceVersion
+		if tlvs != nil {
+			if ver, ok := tlvs.GetUint8(TagSCInterfaceVersion); ok {
+				c.negotiatedVersion = ver
+			}
 		}
 		c.bound = true
 		c.logger.Info("SMPP bind successful",
 			zap.String("system_id", c.config.SystemID),
+			zap.String("smsc_system_id", smscID),
+			zap.String("bind_mode", cmdName),
+			zap.Uint8("negotiated_version", c.negotiatedVersion),
 		)
 	case <-time.After(15 * time.Second):
 		_ = conn.Close()
-		return fmt.Errorf("bind_transceiver response timeout")
+		return fmt.Errorf("%s response timeout", cmdName)
 	case <-ctx.Done():
 		_ = conn.Close()
 		return ctx.Err()
@@ -318,6 +348,277 @@ func (c *Client) SubmitRaw(body []byte) (*SubmitResponse, error) {
 	case <-time.After(30 * time.Second):
 		c.unregisterPending(seq)
 		return nil, fmt.Errorf("submit_sm response timeout")
+	}
+}
+
+// NegotiatedVersion returns the SMPP interface version negotiated during bind.
+// Returns 0 if the client has not yet bound.
+func (c *Client) NegotiatedVersion() byte {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.negotiatedVersion
+}
+
+// QuerySM sends a query_sm PDU and waits for the response.
+func (c *Client) QuerySM(messageID, sourceAddr string, sourceTON, sourceNPI byte) (*QuerySMResponse, error) {
+	c.mu.Lock()
+	if !c.bound {
+		c.mu.Unlock()
+		return nil, fmt.Errorf("not bound to SMSC")
+	}
+	c.mu.Unlock()
+
+	body := EncodeQuerySM(messageID, sourceAddr, sourceTON, sourceNPI)
+	seq := c.nextSeq()
+	pdu := &PDU{
+		CommandID:      CmdQuerySM,
+		CommandStatus:  StatusOK,
+		SequenceNumber: seq,
+		Body:           body,
+	}
+
+	respCh := c.registerPending(seq)
+
+	if err := c.writePDU(pdu); err != nil {
+		c.unregisterPending(seq)
+		return nil, fmt.Errorf("send query_sm: %w", err)
+	}
+
+	select {
+	case resp := <-respCh:
+		if resp.CommandStatus != StatusOK {
+			return nil, fmt.Errorf("query_sm failed with status 0x%08X", resp.CommandStatus)
+		}
+		msgID, finalDate, msgState, errCode := ParseQuerySMResp(resp.Body)
+		return &QuerySMResponse{
+			MessageID:    msgID,
+			FinalDate:    finalDate,
+			MessageState: msgState,
+			ErrorCode:    errCode,
+		}, nil
+	case <-time.After(30 * time.Second):
+		c.unregisterPending(seq)
+		return nil, fmt.Errorf("query_sm response timeout")
+	}
+}
+
+// CancelSM sends a cancel_sm PDU and waits for the response.
+func (c *Client) CancelSM(serviceType, messageID, sourceAddr string, sourceTON, sourceNPI byte, destAddr string, destTON, destNPI byte) error {
+	c.mu.Lock()
+	if !c.bound {
+		c.mu.Unlock()
+		return fmt.Errorf("not bound to SMSC")
+	}
+	c.mu.Unlock()
+
+	body := EncodeCancelSM(serviceType, messageID, sourceAddr, sourceTON, sourceNPI, destAddr, destTON, destNPI)
+	seq := c.nextSeq()
+	pdu := &PDU{
+		CommandID:      CmdCancelSM,
+		CommandStatus:  StatusOK,
+		SequenceNumber: seq,
+		Body:           body,
+	}
+
+	respCh := c.registerPending(seq)
+
+	if err := c.writePDU(pdu); err != nil {
+		c.unregisterPending(seq)
+		return fmt.Errorf("send cancel_sm: %w", err)
+	}
+
+	select {
+	case resp := <-respCh:
+		if resp.CommandStatus != StatusOK {
+			return fmt.Errorf("cancel_sm failed with status 0x%08X", resp.CommandStatus)
+		}
+		return nil
+	case <-time.After(30 * time.Second):
+		c.unregisterPending(seq)
+		return fmt.Errorf("cancel_sm response timeout")
+	}
+}
+
+// ReplaceSM sends a replace_sm PDU and waits for the response.
+func (c *Client) ReplaceSM(messageID, sourceAddr string, sourceTON, sourceNPI byte,
+	scheduleDeliveryTime, validityPeriod string,
+	registeredDelivery, dataCoding byte, shortMessage []byte) error {
+
+	c.mu.Lock()
+	if !c.bound {
+		c.mu.Unlock()
+		return fmt.Errorf("not bound to SMSC")
+	}
+	c.mu.Unlock()
+
+	smLength := byte(len(shortMessage))
+	body := EncodeReplaceSM(messageID, sourceAddr, sourceTON, sourceNPI,
+		scheduleDeliveryTime, validityPeriod,
+		registeredDelivery, dataCoding, smLength, shortMessage)
+	seq := c.nextSeq()
+	pdu := &PDU{
+		CommandID:      CmdReplaceSM,
+		CommandStatus:  StatusOK,
+		SequenceNumber: seq,
+		Body:           body,
+	}
+
+	respCh := c.registerPending(seq)
+
+	if err := c.writePDU(pdu); err != nil {
+		c.unregisterPending(seq)
+		return fmt.Errorf("send replace_sm: %w", err)
+	}
+
+	select {
+	case resp := <-respCh:
+		if resp.CommandStatus != StatusOK {
+			return fmt.Errorf("replace_sm failed with status 0x%08X", resp.CommandStatus)
+		}
+		return nil
+	case <-time.After(30 * time.Second):
+		c.unregisterPending(seq)
+		return fmt.Errorf("replace_sm response timeout")
+	}
+}
+
+// BroadcastSMResponse contains the SMSC's response to a broadcast_sm.
+type BroadcastSMResponse struct {
+	MessageID string
+}
+
+// BroadcastSM sends a broadcast_sm PDU and waits for the response.
+// The caller must populate the tlvs parameter with required TLVs
+// (broadcast_area_identifier, broadcast_content_type, broadcast_rep_num,
+// broadcast_frequency_interval).
+func (c *Client) BroadcastSM(serviceType string, sourceTON, sourceNPI byte,
+	sourceAddr, messageID string, priorityFlag byte,
+	scheduleDeliveryTime, validityPeriod string,
+	replaceIfPresent, dataCoding, smDefaultMsgID byte,
+	tlvs TLVSet) (*BroadcastSMResponse, error) {
+
+	c.mu.Lock()
+	if !c.bound {
+		c.mu.Unlock()
+		return nil, fmt.Errorf("not bound to SMSC")
+	}
+	c.mu.Unlock()
+
+	body := EncodeBroadcastSM(serviceType, sourceTON, sourceNPI,
+		sourceAddr, messageID, priorityFlag,
+		scheduleDeliveryTime, validityPeriod,
+		replaceIfPresent, dataCoding, smDefaultMsgID)
+
+	seq := c.nextSeq()
+	pdu := &PDU{
+		CommandID:      CmdBroadcastSM,
+		CommandStatus:  StatusOK,
+		SequenceNumber: seq,
+		Body:           body,
+		TLVs:           tlvs,
+	}
+
+	respCh := c.registerPending(seq)
+
+	if err := c.writePDU(pdu); err != nil {
+		c.unregisterPending(seq)
+		return nil, fmt.Errorf("send broadcast_sm: %w", err)
+	}
+
+	select {
+	case resp := <-respCh:
+		if resp.CommandStatus != StatusOK {
+			return nil, fmt.Errorf("broadcast_sm failed with status 0x%08X", resp.CommandStatus)
+		}
+		msgID := ParseBroadcastSMResp(resp.Body)
+		return &BroadcastSMResponse{MessageID: msgID}, nil
+	case <-time.After(30 * time.Second):
+		c.unregisterPending(seq)
+		return nil, fmt.Errorf("broadcast_sm response timeout")
+	}
+}
+
+// QueryBroadcastSMResponse contains the SMSC's response to a query_broadcast_sm.
+type QueryBroadcastSMResponse struct {
+	MessageID    string
+	MessageState byte
+}
+
+// QueryBroadcastSM sends a query_broadcast_sm PDU and waits for the response.
+func (c *Client) QueryBroadcastSM(messageID string, sourceTON, sourceNPI byte, sourceAddr string) (*QueryBroadcastSMResponse, error) {
+	c.mu.Lock()
+	if !c.bound {
+		c.mu.Unlock()
+		return nil, fmt.Errorf("not bound to SMSC")
+	}
+	c.mu.Unlock()
+
+	body := EncodeQueryBroadcastSM(messageID, sourceTON, sourceNPI, sourceAddr)
+	seq := c.nextSeq()
+	pdu := &PDU{
+		CommandID:      CmdQueryBroadcastSM,
+		CommandStatus:  StatusOK,
+		SequenceNumber: seq,
+		Body:           body,
+	}
+
+	respCh := c.registerPending(seq)
+
+	if err := c.writePDU(pdu); err != nil {
+		c.unregisterPending(seq)
+		return nil, fmt.Errorf("send query_broadcast_sm: %w", err)
+	}
+
+	select {
+	case resp := <-respCh:
+		if resp.CommandStatus != StatusOK {
+			return nil, fmt.Errorf("query_broadcast_sm failed with status 0x%08X", resp.CommandStatus)
+		}
+		msgID, msgState := ParseQueryBroadcastSMResp(resp.Body)
+		return &QueryBroadcastSMResponse{
+			MessageID:    msgID,
+			MessageState: msgState,
+		}, nil
+	case <-time.After(30 * time.Second):
+		c.unregisterPending(seq)
+		return nil, fmt.Errorf("query_broadcast_sm response timeout")
+	}
+}
+
+// CancelBroadcastSM sends a cancel_broadcast_sm PDU and waits for the response.
+func (c *Client) CancelBroadcastSM(serviceType, messageID string, sourceTON, sourceNPI byte, sourceAddr string) error {
+	c.mu.Lock()
+	if !c.bound {
+		c.mu.Unlock()
+		return fmt.Errorf("not bound to SMSC")
+	}
+	c.mu.Unlock()
+
+	body := EncodeCancelBroadcastSM(serviceType, messageID, sourceTON, sourceNPI, sourceAddr)
+	seq := c.nextSeq()
+	pdu := &PDU{
+		CommandID:      CmdCancelBroadcastSM,
+		CommandStatus:  StatusOK,
+		SequenceNumber: seq,
+		Body:           body,
+	}
+
+	respCh := c.registerPending(seq)
+
+	if err := c.writePDU(pdu); err != nil {
+		c.unregisterPending(seq)
+		return fmt.Errorf("send cancel_broadcast_sm: %w", err)
+	}
+
+	select {
+	case resp := <-respCh:
+		if resp.CommandStatus != StatusOK {
+			return fmt.Errorf("cancel_broadcast_sm failed with status 0x%08X", resp.CommandStatus)
+		}
+		return nil
+	case <-time.After(30 * time.Second):
+		c.unregisterPending(seq)
+		return fmt.Errorf("cancel_broadcast_sm response timeout")
 	}
 }
 
@@ -449,7 +750,11 @@ func (c *Client) ReadLoop() {
 // dispatchPDU routes an incoming PDU to the correct handler.
 func (c *Client) dispatchPDU(pdu *PDU) {
 	switch pdu.CommandID {
-	case CmdBindTransceiverResp, CmdSubmitSMResp, CmdUnbindResp:
+	case CmdBindTransceiverResp, CmdBindTransmitterResp, CmdBindReceiverResp,
+		CmdSubmitSMResp, CmdUnbindResp,
+		CmdQuerySMResp, CmdCancelSMResp, CmdReplaceSMResp,
+		CmdDataSMResp, CmdSubmitMultiResp,
+		CmdBroadcastSMResp, CmdQueryBroadcastSMResp, CmdCancelBroadcastSMResp:
 		// Response to a request we sent -- deliver to the pending channel.
 		ch := c.unregisterPending(pdu.SequenceNumber)
 		if ch != nil {

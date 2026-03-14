@@ -1,6 +1,6 @@
 # go-smsc
 
-An SMPP 3.4 library and SMSC gateway for Go.
+An SMPP 3.4 / 5.0 library and SMSC gateway for Go.
 
 Three packages, one module:
 
@@ -26,7 +26,7 @@ go get github.com/idnteq/go-smsc/mocksmsc   # mock SMSC for tests
 
 ## SMPP Library
 
-A production-grade SMPP 3.4 client with connection pooling, windowed backpressure, automatic reconnection, TLS, and OpenTelemetry instrumentation.
+A production-grade SMPP 3.4 / 5.0 client with connection pooling, windowed backpressure, automatic reconnection, TLS, and OpenTelemetry instrumentation.
 
 ### Quick Start
 

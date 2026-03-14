@@ -21,9 +21,9 @@ golangci-lint run                                           # Linter (default co
 
 ## Architecture
 
-This is an SMPP 3.4 gateway with three core packages and a binary entrypoint:
+This is an SMPP 3.4 / 5.0 gateway with three core packages and a binary entrypoint:
 
-- **`smpp/`** — Protocol library: PDU codec (`pdu.go`), single transceiver `Client` with auto-reconnect, connection `Pool` with round-robin and windowed flow control, DLR receipt parsing (`handler.go`)
+- **`smpp/`** — Protocol library: PDU codec (`pdu.go`), TLV framework (`tlv.go`), all bind modes (`bind.go`), all SMPP operations (`operations.go`, `broadcast.go`), character encoding (`coding.go`), message segmentation (`segment.go`), connection `Pool` with round-robin and windowed flow control, DLR receipt parsing (`handler.go`). Supports SMPP 3.4 and 5.0 with version negotiation.
 - **`gateway/`** — Embeddable SMSC gateway: northbound SMPP `Server` accepting engine connections, `Router` with MSISDN-sticky affinity and DLR correlation, Pebble-backed `MessageStore` with async batch writes, REST API for SMS submission, Admin API + embedded JS dashboard, Prometheus metrics, `ShardMap` (generic sharded concurrent map), `MTRoute`/`MORoute` tables with failover/round-robin/least-cost strategies, `PoolManager` for named southbound pools
 - **`mocksmsc/`** — Mock SMSC server for tests (configurable DLR delay, success rate, MO echo)
 - **`cmd/smsc-gateway/`** — Standalone binary orchestrating the full stack with signal-based graceful shutdown
