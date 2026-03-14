@@ -136,6 +136,26 @@ func EncodeGSM7(text string) ([]byte, int, error) {
 		}
 	}
 
+	// When exactly 7 fill bits remain in the last byte, pad with a CR
+	// character (GSM code 0x0D) to prevent decoders that ignore the septet
+	// count from producing a spurious '@' (GSM code 0x00). This is the
+	// convention used by most SMPP libraries (cloudhopper,
+	// CursedHardware/go-smpp, etc.). Fewer than 7 fill bits cannot form a
+	// complete septet, so zero-fill is fine.
+	fillBits := packedLen*8 - numSeptets*7
+	if fillBits == 7 && packedLen > 0 {
+		startBit := numSeptets * 7
+		cr := byte(0x0D) // carriage return in GSM 7-bit
+		for i := range 7 {
+			bitIdx := startBit + i
+			bytePos := bitIdx / 8
+			bitPos := uint(bitIdx % 8)
+			if bytePos < packedLen {
+				packed[bytePos] |= ((cr >> uint(i)) & 1) << bitPos
+			}
+		}
+	}
+
 	return packed, numSeptets, nil
 }
 
