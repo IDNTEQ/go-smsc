@@ -41,6 +41,9 @@ type Connection struct {
 
 	// In-flight tracking for graceful shutdown.
 	inFlight atomic.Int32
+
+	// Per-connection config (nil if using global auth).
+	connConfig *ConnectionConfig
 }
 
 // SubmitHandler is called when the engine sends a submit_sm.
@@ -67,10 +70,11 @@ func NewConnection(id string, conn net.Conn, logger *zap.Logger) *Connection {
 
 // BindConfig holds bind-time validation parameters passed from the server.
 type BindConfig struct {
-	Password       string   // required password (empty = accept any)
-	AllowedEngines []string // system_id whitelist (empty = allow all)
-	ServerSystemID string   // system_id to present in bind_resp
-	SMPPVersion    string   // "3.4" or "5.0" — when "5.0", include sc_interface_version TLV in bind_resp
+	Password        string                // required password (empty = accept any)
+	AllowedEngines  []string              // system_id whitelist (empty = allow all)
+	ServerSystemID  string                // system_id to present in bind_resp
+	SMPPVersion     string                // "3.4" or "5.0" — when "5.0", include sc_interface_version TLV in bind_resp
+	ConnConfigStore *ConnectionConfigStore // per-connection config store (nil = disabled)
 }
 
 // ReadLoop reads PDUs from the engine and dispatches them. It blocks until
@@ -192,27 +196,87 @@ func (c *Connection) handleBind(pdu *smpp.PDU, cfg BindConfig) bool {
 	respCmdID := bindRespCommandID(pdu.CommandID)
 
 	c.SystemID = systemID
+	c.BindMode = bindModeFromCommandID(pdu.CommandID)
 	c.logger = c.logger.With(zap.String("system_id", systemID))
 
-	if cfg.Password != "" && password != cfg.Password {
-		c.logger.Warn("bind rejected: invalid password")
-		_ = c.sendResponse(respCmdID, smpp.StatusInvBnd, pdu.SequenceNumber, []byte{0x00})
-		return false
+	// Try per-connection config first.
+	if cfg.ConnConfigStore != nil {
+		connCfg, err := cfg.ConnConfigStore.Authenticate(systemID, password)
+		if connCfg != nil {
+			// Found and authenticated — check additional restrictions.
+
+			// IP whitelist.
+			if len(connCfg.AllowedIPs) > 0 {
+				remoteIP := extractIP(c.conn.RemoteAddr().String())
+				allowed := false
+				for _, ip := range connCfg.AllowedIPs {
+					if ip == remoteIP {
+						allowed = true
+						break
+					}
+				}
+				if !allowed {
+					c.logger.Warn("bind rejected: IP not in whitelist",
+						zap.String("remote_ip", remoteIP),
+					)
+					_ = c.sendResponse(respCmdID, smpp.StatusInvBnd, pdu.SequenceNumber, []byte{0x00})
+					return false
+				}
+			}
+
+			// Bind mode check.
+			if len(connCfg.AllowedBindModes) > 0 {
+				modeName := bindModeName(c.BindMode)
+				allowed := false
+				for _, m := range connCfg.AllowedBindModes {
+					if m == modeName {
+						allowed = true
+						break
+					}
+				}
+				if !allowed {
+					c.logger.Warn("bind rejected: bind mode not allowed",
+						zap.String("bind_mode", modeName),
+					)
+					_ = c.sendResponse(respCmdID, smpp.StatusInvBnd, pdu.SequenceNumber, []byte{0x00})
+					return false
+				}
+			}
+
+			c.connConfig = connCfg
+			// Per-connection auth succeeded — skip global auth, proceed to bind response.
+		} else if err != nil {
+			// Found but auth failed (wrong password or disabled).
+			c.logger.Warn("bind rejected: authentication failed", zap.Error(err))
+			_ = c.sendResponse(respCmdID, smpp.StatusInvPaswd, pdu.SequenceNumber, []byte{0x00})
+			return false
+		}
+		// If connCfg == nil && err == nil, not found — fall through to global.
 	}
 
-	// Check system_id whitelist if configured.
-	if len(cfg.AllowedEngines) > 0 {
-		allowed := false
-		for _, a := range cfg.AllowedEngines {
-			if a == systemID {
-				allowed = true
-				break
-			}
-		}
-		if !allowed {
-			c.logger.Warn("bind rejected: system_id not in allowed list")
+	// Fall through to global password check (existing code) only if no
+	// per-connection config was matched.
+	if c.connConfig == nil {
+		if cfg.Password != "" && password != cfg.Password {
+			c.logger.Warn("bind rejected: invalid password")
 			_ = c.sendResponse(respCmdID, smpp.StatusInvBnd, pdu.SequenceNumber, []byte{0x00})
 			return false
+		}
+
+		// Check system_id whitelist if configured.
+		if len(cfg.AllowedEngines) > 0 {
+			allowed := false
+			for _, a := range cfg.AllowedEngines {
+				if a == systemID {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				c.logger.Warn("bind rejected: system_id not in allowed list")
+				_ = c.sendResponse(respCmdID, smpp.StatusInvBnd, pdu.SequenceNumber, []byte{0x00})
+				return false
+			}
 		}
 	}
 
@@ -232,9 +296,34 @@ func (c *Connection) handleBind(pdu *smpp.PDU, cfg BindConfig) bool {
 	}
 
 	_ = c.sendResponse(respCmdID, smpp.StatusOK, pdu.SequenceNumber, respBody)
-	c.BindMode = bindModeFromCommandID(pdu.CommandID)
 	c.bound = true
 	return true
+}
+
+// ConnConfig returns the per-connection config, or nil if using global auth.
+func (c *Connection) ConnConfig() *ConnectionConfig {
+	return c.connConfig
+}
+
+// bindModeName returns the human-readable name for a bind mode.
+func bindModeName(mode smpp.BindMode) string {
+	switch mode {
+	case smpp.BindTransmitter:
+		return "transmitter"
+	case smpp.BindReceiver:
+		return "receiver"
+	default:
+		return "transceiver"
+	}
+}
+
+// extractIP extracts the IP address from a host:port string.
+func extractIP(remoteAddr string) string {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		return remoteAddr
+	}
+	return host
 }
 
 // SendSubmitSMResp sends a submit_sm_resp back to the engine.

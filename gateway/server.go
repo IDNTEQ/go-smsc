@@ -27,10 +27,11 @@ type Server struct {
 	conns       map[string]*Connection // connID (=system_id) → Connection
 	disconnects map[string]time.Time   // connID → time of last disconnect
 
-	router  *Router
-	metrics *Metrics
-	logger  *zap.Logger
-	done    chan struct{}
+	router          *Router
+	connConfigStore *ConnectionConfigStore
+	metrics         *Metrics
+	logger          *zap.Logger
+	done            chan struct{}
 }
 
 // NewServer creates a new northbound SMPP server.
@@ -48,6 +49,11 @@ func NewServer(cfg Config, metrics *Metrics, logger *zap.Logger) *Server {
 // SetRouter sets the router after construction (breaks circular dependency).
 func (s *Server) SetRouter(r *Router) {
 	s.router = r
+}
+
+// SetConnConfigStore sets the per-connection configuration store.
+func (s *Server) SetConnConfigStore(store *ConnectionConfigStore) {
+	s.connConfigStore = store
 }
 
 // Start begins listening for engine SMPP connections.
@@ -171,10 +177,11 @@ func (s *Server) handleConnection(c *Connection) {
 	c.ReadLoop(
 		s.done,
 		BindConfig{
-			Password:       s.cfg.ServerPassword,
-			AllowedEngines: s.cfg.AllowedEngines,
-			ServerSystemID: s.cfg.ServerSystemID,
-			SMPPVersion:    s.cfg.SMPPVersion,
+			Password:        s.cfg.ServerPassword,
+			AllowedEngines:  s.cfg.AllowedEngines,
+			ServerSystemID:  s.cfg.ServerSystemID,
+			SMPPVersion:     s.cfg.SMPPVersion,
+			ConnConfigStore: s.connConfigStore,
 		},
 		s.onSubmit,
 		s.onDeliverResp,
@@ -185,6 +192,27 @@ func (s *Server) handleConnection(c *Connection) {
 // onBind is called when a connection completes bind_transceiver.
 // It uses the system_id as the stable connection ID.
 func (s *Server) onBind(c *Connection, systemID string) {
+	// MaxBinds enforcement for per-connection configs.
+	if c.connConfig != nil && c.connConfig.MaxBinds > 0 {
+		bindCount := 0
+		s.connMu.RLock()
+		for _, existing := range s.conns {
+			if existing.SystemID == systemID && existing.IsBound() {
+				bindCount++
+			}
+		}
+		s.connMu.RUnlock()
+		if bindCount >= c.connConfig.MaxBinds {
+			s.logger.Warn("bind rejected: max binds exceeded",
+				zap.String("system_id", systemID),
+				zap.Int("max_binds", c.connConfig.MaxBinds),
+				zap.Int("current_binds", bindCount),
+			)
+			_ = c.Close()
+			return
+		}
+	}
+
 	// Use system_id as the connection ID for stable affinity.
 	c.ID = systemID
 	c.logger = c.logger.With(zap.String("conn_id", systemID))

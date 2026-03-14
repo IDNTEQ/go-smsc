@@ -58,7 +58,8 @@ func setupTestStack(t *testing.T) *testStack {
 	router.RegisterRESTRoutes(mux, keyStore)
 
 	// Server is nil for tests that don't need connection listing.
-	adminAPI := NewAdminAPI(router, poolManager, routeConfig, keyStore, userStore, metrics, nil, logger)
+	connConfigStore := NewConnectionConfigStore(store)
+	adminAPI := NewAdminAPI(router, poolManager, routeConfig, keyStore, userStore, connConfigStore, metrics, nil, logger)
 	adminAPI.RegisterRoutes(mux)
 
 	return &testStack{

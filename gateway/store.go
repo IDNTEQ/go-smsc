@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -69,6 +70,7 @@ type MessageStore struct {
 	msgCount         atomic.Int64 // msg: + gw: entries (approximate)
 	retryCount       atomic.Int64 // retry: entries (approximate)
 	submitRetryCount atomic.Int64 // submit-retry: entries (approximate)
+	logCount         atomic.Int64 // log: entries (approximate)
 
 	// Async batch writer channel. Writes are buffered and flushed periodically.
 	writeCh chan writeOp
@@ -363,8 +365,10 @@ func (s *MessageStore) Cleanup(ttl time.Duration) (int, error) {
 	batch := s.db.NewBatch()
 	defer func() { _ = batch.Close() }()
 
-	// Scan key prefixes: msg:{smscMsgID}, gw:{gwMsgID}, and status:{gwMsgID}.
-	for _, prefix := range []string{"msg:", "gw:", "status:"} {
+	logDeleted := 0
+
+	// Scan key prefixes: msg:{smscMsgID}, gw:{gwMsgID}, status:{gwMsgID}, log:{ts}:{id}, logidx:{id}.
+	for _, prefix := range []string{"msg:", "gw:", "status:", "log:", "logidx:"} {
 		iter, err := s.db.NewIter(&pebble.IterOptions{
 			LowerBound: []byte(prefix),
 			UpperBound: []byte(prefix + "\xff"),
@@ -378,6 +382,34 @@ func (s *MessageStore) Cleanup(ttl time.Duration) (int, error) {
 			if err != nil {
 				continue
 			}
+
+			// logidx: values are plain key strings, not JSON.
+			// Delete them if the referenced log: entry would be expired.
+			if prefix == "logidx:" {
+				// The value is the log key; look up the log entry's timestamp.
+				logData, logCloser, logErr := s.db.Get(val)
+				if logErr != nil {
+					// Referenced entry already gone — clean up the index.
+					keyCopy := make([]byte, len(iter.Key()))
+					copy(keyCopy, iter.Key())
+					_ = batch.Delete(keyCopy, pebble.NoSync)
+					deleted++
+					continue
+				}
+				var logTS struct {
+					UpdatedAt time.Time `json:"updated_at"`
+				}
+				_ = json.Unmarshal(logData, &logTS)
+				_ = logCloser.Close()
+				if !logTS.UpdatedAt.IsZero() && logTS.UpdatedAt.Before(cutoff) {
+					keyCopy := make([]byte, len(iter.Key()))
+					copy(keyCopy, iter.Key())
+					_ = batch.Delete(keyCopy, pebble.NoSync)
+					deleted++
+				}
+				continue
+			}
+
 			// Extract timestamp from either record type.
 			var ts struct {
 				SubmittedAt time.Time `json:"submitted_at"`
@@ -395,6 +427,9 @@ func (s *MessageStore) Cleanup(ttl time.Duration) (int, error) {
 				copy(keyCopy, iter.Key())
 				_ = batch.Delete(keyCopy, pebble.NoSync)
 				deleted++
+				if prefix == "log:" {
+					logDeleted++
+				}
 			}
 		}
 		_ = iter.Close()
@@ -404,7 +439,9 @@ func (s *MessageStore) Cleanup(ttl time.Duration) (int, error) {
 		if err := batch.Commit(pebble.NoSync); err != nil {
 			return 0, fmt.Errorf("commit cleanup batch: %w", err)
 		}
-		s.msgCount.Add(int64(-deleted))
+		// Decrement msgCount by non-log deletions; logCount by log deletions.
+		s.msgCount.Add(int64(-(deleted - logDeleted)))
+		s.logCount.Add(int64(-logDeleted))
 	}
 	return deleted, nil
 }
@@ -616,6 +653,171 @@ func (s *MessageStore) GetMessageStatus(gwMsgID string) (*MessageStatus, error) 
 		return nil, err
 	}
 	return &st, nil
+}
+
+// MessageLogEntry represents a logged message for search and tracking.
+type MessageLogEntry struct {
+	GwMsgID    string    `json:"gw_msg_id"`
+	SmscMsgID  string    `json:"smsc_msg_id,omitempty"`
+	ConnID     string    `json:"conn_id"`
+	SourceAddr string    `json:"source_addr"`
+	DestAddr   string    `json:"dest_addr"`
+	Status     string    `json:"status"`      // accepted, forwarded, delivered, failed, rejected
+	DLRStatus  string    `json:"dlr_status,omitempty"`
+	Cost       float64   `json:"cost,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+// MessageFilter specifies criteria for querying message logs.
+type MessageFilter struct {
+	ConnID string
+	Status string
+	From   string // source address substring match
+	To     string // dest address substring match
+	After  time.Time
+	Before time.Time
+	Limit  int
+}
+
+// LogMessage persists a message log entry. Sets CreatedAt if zero, UpdatedAt to now.
+// Also stores a secondary index logidx:{gwMsgID} for efficient ID lookups.
+func (s *MessageStore) LogMessage(entry *MessageLogEntry) error {
+	now := time.Now()
+	if entry.CreatedAt.IsZero() {
+		entry.CreatedAt = now
+	}
+	entry.UpdatedAt = now
+
+	key := "log:" + entry.CreatedAt.Format(time.RFC3339Nano) + ":" + entry.GwMsgID
+	data, err := json.Marshal(entry)
+	if err != nil {
+		return fmt.Errorf("marshal log entry: %w", err)
+	}
+	if err := s.db.Set([]byte(key), data, pebble.NoSync); err != nil {
+		return err
+	}
+	// Secondary index for ID lookup.
+	if err := s.db.Set([]byte("logidx:"+entry.GwMsgID), []byte(key), pebble.NoSync); err != nil {
+		return err
+	}
+	s.logCount.Add(1)
+	return nil
+}
+
+// UpdateMessageLog looks up a log entry by gwMsgID via the secondary index,
+// applies the updater function, and saves the entry back.
+func (s *MessageStore) UpdateMessageLog(gwMsgID string, updater func(*MessageLogEntry)) error {
+	// Lookup the log key via secondary index.
+	idxKey := []byte("logidx:" + gwMsgID)
+	logKeyBytes, closer, err := s.db.Get(idxKey)
+	if err != nil {
+		if err == pebble.ErrNotFound {
+			return nil // no log entry to update
+		}
+		return fmt.Errorf("get log index: %w", err)
+	}
+	logKey := make([]byte, len(logKeyBytes))
+	copy(logKey, logKeyBytes)
+	_ = closer.Close()
+
+	// Load the entry.
+	data, closer2, err := s.db.Get(logKey)
+	if err != nil {
+		if err == pebble.ErrNotFound {
+			return nil
+		}
+		return fmt.Errorf("get log entry: %w", err)
+	}
+	dataCopy := make([]byte, len(data))
+	copy(dataCopy, data)
+	_ = closer2.Close()
+
+	var entry MessageLogEntry
+	if err := json.Unmarshal(dataCopy, &entry); err != nil {
+		return fmt.Errorf("unmarshal log entry: %w", err)
+	}
+
+	updater(&entry)
+	entry.UpdatedAt = time.Now()
+
+	newData, err := json.Marshal(&entry)
+	if err != nil {
+		return fmt.Errorf("marshal updated log entry: %w", err)
+	}
+	return s.db.Set(logKey, newData, pebble.NoSync)
+}
+
+// QueryMessages queries message log entries matching the given filter.
+// Results are returned in reverse chronological order (newest first).
+func (s *MessageStore) QueryMessages(filter MessageFilter) ([]*MessageLogEntry, error) {
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+
+	lower := []byte("log:")
+	upper := []byte("log:\xff")
+
+	if !filter.After.IsZero() {
+		lower = []byte("log:" + filter.After.Format(time.RFC3339Nano))
+	}
+	if !filter.Before.IsZero() {
+		upper = []byte("log:" + filter.Before.Format(time.RFC3339Nano) + "\xff")
+	}
+
+	iter, err := s.db.NewIter(&pebble.IterOptions{
+		LowerBound: lower,
+		UpperBound: upper,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create log iterator: %w", err)
+	}
+	defer func() { _ = iter.Close() }()
+
+	var results []*MessageLogEntry
+
+	// Iterate in reverse (newest first).
+	for iter.Last(); iter.Valid(); iter.Prev() {
+		if len(results) >= limit {
+			break
+		}
+
+		val, err := iter.ValueAndErr()
+		if err != nil {
+			continue
+		}
+		var entry MessageLogEntry
+		if err := json.Unmarshal(val, &entry); err != nil {
+			continue
+		}
+
+		// Apply in-memory filters.
+		if filter.ConnID != "" && entry.ConnID != filter.ConnID {
+			continue
+		}
+		if filter.Status != "" && entry.Status != filter.Status {
+			continue
+		}
+		if filter.From != "" && !strings.Contains(entry.SourceAddr, filter.From) {
+			continue
+		}
+		if filter.To != "" && !strings.Contains(entry.DestAddr, filter.To) {
+			continue
+		}
+
+		results = append(results, &entry)
+	}
+
+	return results, nil
+}
+
+// MessageLogCount returns the approximate number of message log entries. O(1).
+func (s *MessageStore) MessageLogCount() int {
+	return int(s.logCount.Load())
 }
 
 // Ensure MessageStore implements io.Closer.

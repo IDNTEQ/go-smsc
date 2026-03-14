@@ -135,6 +135,8 @@ func run(ctx context.Context, logger *zap.Logger) error {
 	if err := userStore.Bootstrap(); err != nil {
 		logger.Warn("admin bootstrap error", zap.Error(err))
 	}
+	connConfigStore := gateway.NewConnectionConfigStore(store)
+	server.SetConnConfigStore(connConfigStore)
 
 	// 11. HTTP server: REST API + Admin API + Admin UI
 	httpMux := http.NewServeMux()
@@ -143,7 +145,7 @@ func run(ctx context.Context, logger *zap.Logger) error {
 	router.RegisterRESTRoutes(httpMux, keyStore)
 
 	// Admin API endpoints (/admin/api/*)
-	adminAPI := gateway.NewAdminAPI(router, poolManager, routeConfig, keyStore, userStore, metrics, server, logger.Named("admin"))
+	adminAPI := gateway.NewAdminAPI(router, poolManager, routeConfig, keyStore, userStore, connConfigStore, metrics, server, logger.Named("admin"))
 	adminAPI.RegisterRoutes(httpMux)
 
 	// Admin UI (catch-all for /admin/*)

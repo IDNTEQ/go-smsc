@@ -261,6 +261,15 @@ func (r *Router) HandleSubmit(connID string, seqNum uint32, body []byte) {
 				zap.String("dest", destAddr),
 			)
 			r.metrics.BlacklistedTotal.Inc()
+			if r.store != nil {
+				_ = r.store.LogMessage(&MessageLogEntry{
+					GwMsgID:    fmt.Sprintf("rejected-%d", r.msgSeq.Add(1)),
+					ConnID:     connID,
+					SourceAddr: sourceAddr,
+					DestAddr:   destAddr,
+					Status:     "rejected",
+				})
+			}
 			if c != nil {
 				_ = c.SendSubmitSMResp(seqNum, smpp.StatusSubmitFail, "")
 			}
@@ -268,16 +277,60 @@ func (r *Router) HandleSubmit(connID string, seqNum uint32, body []byte) {
 		}
 	}
 
-	// Check per-connection rate limit.
-	if c != nil && r.rateLimitTPS > 0 {
-		if c.CurrentTPS() >= uint64(r.rateLimitTPS) {
+	// Per-connection prefix filtering.
+	if c != nil && c.ConnConfig() != nil && len(c.ConnConfig().AllowedPrefixes) > 0 {
+		allowed := false
+		for _, prefix := range c.ConnConfig().AllowedPrefixes {
+			if strings.HasPrefix(destAddr, prefix) {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			r.logger.Debug("submit blocked by prefix filter",
+				zap.String("conn_id", connID),
+				zap.String("dest", destAddr),
+			)
+			if r.store != nil {
+				_ = r.store.LogMessage(&MessageLogEntry{
+					GwMsgID:    fmt.Sprintf("rejected-%d", r.msgSeq.Add(1)),
+					ConnID:     connID,
+					SourceAddr: sourceAddr,
+					DestAddr:   destAddr,
+					Status:     "rejected",
+				})
+			}
+			if c != nil {
+				_ = c.SendSubmitSMResp(seqNum, smpp.StatusSubmitFail, "")
+			}
+			return
+		}
+	}
+
+	// Check per-connection rate limit. Use per-connection MaxTPS if set,
+	// otherwise fall back to global rateLimitTPS.
+	effectiveTPS := r.rateLimitTPS
+	if c != nil && c.ConnConfig() != nil && c.ConnConfig().MaxTPS > 0 {
+		effectiveTPS = c.ConnConfig().MaxTPS
+	}
+	if c != nil && effectiveTPS > 0 {
+		if c.CurrentTPS() >= uint64(effectiveTPS) {
 			r.logger.Debug("submit throttled",
 				zap.String("conn_id", connID),
 				zap.Uint64("current_tps", c.CurrentTPS()),
-				zap.Int("limit", r.rateLimitTPS),
+				zap.Int("limit", effectiveTPS),
 			)
 			r.metrics.ThrottledTotal.Inc()
 			r.totalThrottled.Add(1)
+			if r.store != nil {
+				_ = r.store.LogMessage(&MessageLogEntry{
+					GwMsgID:    fmt.Sprintf("rejected-%d", r.msgSeq.Add(1)),
+					ConnID:     connID,
+					SourceAddr: sourceAddr,
+					DestAddr:   destAddr,
+					Status:     "rejected",
+				})
+			}
 			_ = c.SendSubmitSMResp(seqNum, smpp.StatusThrottled, "")
 			return
 		}
@@ -321,6 +374,17 @@ func (r *Router) HandleSubmit(connID string, seqNum uint32, body []byte) {
 			SourceAddr:  sourceAddr,
 			Payload:     body, // raw submit_sm body for replay
 			SubmittedAt: time.Now(),
+		})
+	}
+
+	// Log message as accepted.
+	if r.store != nil {
+		_ = r.store.LogMessage(&MessageLogEntry{
+			GwMsgID:    gwMsgID,
+			ConnID:     connID,
+			SourceAddr: sourceAddr,
+			DestAddr:   destAddr,
+			Status:     "accepted",
 		})
 	}
 
@@ -460,6 +524,14 @@ func (r *Router) forwardSubmitRaw(c *Connection, gwMsgID, destAddr, sourceAddr s
 		}
 	}
 
+	// Update message log to forwarded.
+	if r.store != nil {
+		_ = r.store.UpdateMessageLog(gwMsgID, func(e *MessageLogEntry) {
+			e.Status = "forwarded"
+			e.SmscMsgID = resp.MessageID
+		})
+	}
+
 	r.metrics.SubmitTotal.WithLabelValues("forwarded").Inc()
 	r.totalForwarded.Add(1)
 
@@ -531,6 +603,17 @@ func (r *Router) handleDLR(sourceAddr, destAddr string, esmClass byte, payload [
 	body := BuildDeliverSMBody(sourceAddr, destAddr, esmClass, []byte(translatedPayload))
 
 	connID := corr.NorthConnID
+
+	// Update message log with DLR status.
+	if r.store != nil {
+		_ = r.store.UpdateMessageLog(corr.GwMsgID, func(e *MessageLogEntry) {
+			e.Status = "delivered"
+			e.DLRStatus = receipt.Status
+			if receipt.Status != "DELIVRD" {
+				e.Status = "failed"
+			}
+		})
+	}
 
 	// REST-originated submissions: there is no SMPP connection to deliver to.
 	// The DLR callback IS the terminal delivery path.
@@ -930,6 +1013,14 @@ func (r *Router) sendSyntheticDLR(connID, gwMsgID, destAddr, sourceAddr string) 
 
 	r.metrics.SyntheticDLRTotal.Inc()
 
+	// Update message log to failed.
+	if r.store != nil {
+		_ = r.store.UpdateMessageLog(gwMsgID, func(e *MessageLogEntry) {
+			e.Status = "failed"
+			e.DLRStatus = "UNDELIV"
+		})
+	}
+
 	// REST-originated: update durable status, fire callback, no SMPP delivery.
 	if connID == "rest-api" {
 		if r.store != nil {
@@ -1062,6 +1153,14 @@ func (r *Router) drainSubmitRetries() {
 					UpdatedAt: time.Now(),
 				})
 			}
+		}
+
+		// Update message log to forwarded.
+		if r.store != nil {
+			_ = r.store.UpdateMessageLog(p.GwMsgID, func(e *MessageLogEntry) {
+				e.Status = "forwarded"
+				e.SmscMsgID = resp.MessageID
+			})
 		}
 
 		r.metrics.SubmitTotal.WithLabelValues("forwarded").Inc()

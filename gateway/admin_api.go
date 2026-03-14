@@ -3,6 +3,7 @@ package gateway
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -12,14 +13,15 @@ import (
 
 // AdminAPI provides HTTP handlers for gateway management.
 type AdminAPI struct {
-	router      *Router
-	poolManager *PoolManager
-	routeConfig *RouteConfigStore
-	keyStore    *APIKeyStore
-	userStore   *AdminUserStore
-	metrics     *Metrics
-	server      *Server
-	logger      *zap.Logger
+	router          *Router
+	poolManager     *PoolManager
+	routeConfig     *RouteConfigStore
+	keyStore        *APIKeyStore
+	userStore       *AdminUserStore
+	connConfigStore *ConnectionConfigStore
+	metrics         *Metrics
+	server          *Server
+	logger          *zap.Logger
 }
 
 // NewAdminAPI creates a new AdminAPI.
@@ -29,19 +31,21 @@ func NewAdminAPI(
 	routeConfig *RouteConfigStore,
 	keyStore *APIKeyStore,
 	userStore *AdminUserStore,
+	connConfigStore *ConnectionConfigStore,
 	metrics *Metrics,
 	server *Server,
 	logger *zap.Logger,
 ) *AdminAPI {
 	return &AdminAPI{
-		router:      router,
-		poolManager: poolManager,
-		routeConfig: routeConfig,
-		keyStore:    keyStore,
-		userStore:   userStore,
-		metrics:     metrics,
-		server:      server,
-		logger:      logger,
+		router:          router,
+		poolManager:     poolManager,
+		routeConfig:     routeConfig,
+		keyStore:        keyStore,
+		userStore:       userStore,
+		connConfigStore: connConfigStore,
+		metrics:         metrics,
+		server:          server,
+		logger:          logger,
 	}
 }
 
@@ -81,6 +85,16 @@ func (a *AdminAPI) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /admin/api/users", auth(http.HandlerFunc(a.handleCreateUser)))
 	mux.Handle("DELETE /admin/api/users/{username}", auth(http.HandlerFunc(a.handleDeleteUser)))
 	mux.Handle("PUT /admin/api/users/{username}/password", auth(http.HandlerFunc(a.handleChangePassword)))
+
+	// Connection Configs
+	mux.Handle("GET /admin/api/connconfigs", auth(http.HandlerFunc(a.handleListConnConfigs)))
+	mux.Handle("GET /admin/api/connconfigs/{system_id}", auth(http.HandlerFunc(a.handleGetConnConfig)))
+	mux.Handle("POST /admin/api/connconfigs", auth(http.HandlerFunc(a.handleCreateConnConfig)))
+	mux.Handle("PUT /admin/api/connconfigs/{system_id}", auth(http.HandlerFunc(a.handleUpdateConnConfig)))
+	mux.Handle("DELETE /admin/api/connconfigs/{system_id}", auth(http.HandlerFunc(a.handleDeleteConnConfig)))
+
+	// Message log
+	mux.Handle("GET /admin/api/messages", auth(http.HandlerFunc(a.handleListMessages)))
 
 	// WebSocket for real-time metrics
 	mux.Handle("GET /admin/ws", auth(websocket.Handler(a.handleWebSocket)))
@@ -126,6 +140,7 @@ func (a *AdminAPI) handleStats(w http.ResponseWriter, r *http.Request) {
 	if a.router.store != nil {
 		stats["store_size"] = a.router.store.MessageCount()
 		stats["retry_queue"] = a.router.store.PendingRetryCount()
+		stats["message_log_size"] = a.router.store.MessageLogCount()
 	}
 	writeJSON(w, http.StatusOK, stats)
 }
@@ -315,6 +330,101 @@ func (a *AdminAPI) handleChangePassword(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// --- Connection Configs CRUD ---
+
+func (a *AdminAPI) handleListConnConfigs(w http.ResponseWriter, r *http.Request) {
+	configs, _ := a.connConfigStore.List()
+	writeJSON(w, http.StatusOK, configs)
+}
+
+func (a *AdminAPI) handleGetConnConfig(w http.ResponseWriter, r *http.Request) {
+	systemID := r.PathValue("system_id")
+	cfg, err := a.connConfigStore.Get(systemID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if cfg == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	cfg.Password = "" // Don't expose hash
+	writeJSON(w, http.StatusOK, cfg)
+}
+
+func (a *AdminAPI) handleCreateConnConfig(w http.ResponseWriter, r *http.Request) {
+	var cfg ConnectionConfig
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return
+	}
+	if err := a.connConfigStore.Create(&cfg); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	cfg.Password = "" // Don't return hash
+	writeJSON(w, http.StatusCreated, &cfg)
+}
+
+func (a *AdminAPI) handleUpdateConnConfig(w http.ResponseWriter, r *http.Request) {
+	systemID := r.PathValue("system_id")
+	var cfg ConnectionConfig
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return
+	}
+	cfg.SystemID = systemID
+	if err := a.connConfigStore.Update(&cfg); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	updated, err := a.connConfigStore.Get(systemID)
+	if err != nil || updated == nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to retrieve updated config"})
+		return
+	}
+	updated.Password = "" // Don't return hash
+	writeJSON(w, http.StatusOK, updated)
+}
+
+func (a *AdminAPI) handleDeleteConnConfig(w http.ResponseWriter, r *http.Request) {
+	systemID := r.PathValue("system_id")
+	if err := a.connConfigStore.Delete(systemID); err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// --- Message Log ---
+
+func (a *AdminAPI) handleListMessages(w http.ResponseWriter, r *http.Request) {
+	filter := MessageFilter{
+		ConnID: r.URL.Query().Get("conn_id"),
+		Status: r.URL.Query().Get("status"),
+		From:   r.URL.Query().Get("from"),
+		To:     r.URL.Query().Get("to"),
+		Limit:  50,
+	}
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 200 {
+			filter.Limit = n
+		}
+	}
+	if v := r.URL.Query().Get("after"); v != "" {
+		filter.After, _ = time.Parse(time.RFC3339, v)
+	}
+	if v := r.URL.Query().Get("before"); v != "" {
+		filter.Before, _ = time.Parse(time.RFC3339, v)
+	}
+	entries, err := a.router.store.QueryMessages(filter)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, entries)
 }
 
 // --- WebSocket real-time metrics ---
