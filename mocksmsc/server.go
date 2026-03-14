@@ -188,28 +188,45 @@ func (s *Server) handleConnection(conn net.Conn) {
 		}
 
 		switch pdu.CommandID {
-		case smpp.CmdBindTransceiver:
+		case smpp.CmdBindTransceiver, smpp.CmdBindTransmitter, smpp.CmdBindReceiver:
 			// Parse bind fields for logging. The body contains C-strings:
 			// system_id, password, system_type, then interface_version, addr_ton, addr_npi, address_range
 			systemID, _ := smpp.ReadCString(pdu.Body, 0)
-			s.logger.Info("bind_transceiver received",
+			cmdName := smpp.CommandName(pdu.CommandID)
+			s.logger.Info("bind received",
+				zap.String("type", cmdName),
 				zap.String("system_id", systemID),
 			)
 
-			// Send bind_transceiver_resp with success.
+			// Determine the appropriate response command ID.
+			var respCmdID uint32
+			switch pdu.CommandID {
+			case smpp.CmdBindTransmitter:
+				respCmdID = smpp.CmdBindTransmitterResp
+			case smpp.CmdBindReceiver:
+				respCmdID = smpp.CmdBindReceiverResp
+			default:
+				respCmdID = smpp.CmdBindTransceiverResp
+			}
+
+			// Build bind response body: system_id C-string + sc_interface_version TLV.
 			respBody := smpp.WriteCStringBytes("MOCKSMSC")
+			tlvs := make(smpp.TLVSet)
+			tlvs.SetUint8(smpp.TagSCInterfaceVersion, 0x50)
+			respBody = append(respBody, tlvs.Encode()...)
+
 			resp := &smpp.PDU{
-				CommandID:      smpp.CmdBindTransceiverResp,
+				CommandID:      respCmdID,
 				CommandStatus:  smpp.StatusOK,
 				SequenceNumber: pdu.SequenceNumber,
 				Body:           respBody,
 			}
 			if err := s.writePDU(conn, resp); err != nil {
-				s.logger.Error("failed to send bind_transceiver_resp", zap.Error(err))
+				s.logger.Error("failed to send bind response", zap.Error(err))
 				return
 			}
 			bound = true
-			s.logger.Info("client bound as transceiver", zap.String("system_id", systemID))
+			s.logger.Info("client bound", zap.String("type", cmdName), zap.String("system_id", systemID))
 
 		case smpp.CmdSubmitSM:
 			if !bound {
@@ -315,6 +332,54 @@ func (s *Server) handleConnection(conn net.Conn) {
 			_ = s.writePDU(conn, resp)
 			s.logger.Info("client unbound")
 			return
+
+		case smpp.CmdQuerySM:
+			if !bound {
+				resp := &smpp.PDU{
+					CommandID:      smpp.CmdQuerySMResp,
+					CommandStatus:  smpp.StatusInvBnd,
+					SequenceNumber: pdu.SequenceNumber,
+					Body:           []byte{0x00},
+				}
+				_ = s.writePDU(conn, resp)
+				continue
+			}
+			// Return a canned OK response with minimal body:
+			// message_id (C-string) + final_date (C-string) + message_state + error_code
+			msgID, _ := smpp.ReadCString(pdu.Body, 0)
+			var qBody bytes.Buffer
+			qBody.WriteString(msgID)
+			qBody.WriteByte(0x00) // null terminator for message_id
+			qBody.WriteByte(0x00) // final_date (empty C-string)
+			qBody.WriteByte(smpp.MsgStateDelivered) // message_state
+			qBody.WriteByte(0x00)                   // error_code
+			resp := &smpp.PDU{
+				CommandID:      smpp.CmdQuerySMResp,
+				CommandStatus:  smpp.StatusOK,
+				SequenceNumber: pdu.SequenceNumber,
+				Body:           qBody.Bytes(),
+			}
+			_ = s.writePDU(conn, resp)
+			s.logger.Debug("query_sm_resp sent", zap.String("message_id", msgID))
+
+		case smpp.CmdCancelSM:
+			if !bound {
+				resp := &smpp.PDU{
+					CommandID:      smpp.CmdCancelSMResp,
+					CommandStatus:  smpp.StatusInvBnd,
+					SequenceNumber: pdu.SequenceNumber,
+				}
+				_ = s.writePDU(conn, resp)
+				continue
+			}
+			// Return a canned OK response (cancel_sm_resp has no body).
+			resp := &smpp.PDU{
+				CommandID:      smpp.CmdCancelSMResp,
+				CommandStatus:  smpp.StatusOK,
+				SequenceNumber: pdu.SequenceNumber,
+			}
+			_ = s.writePDU(conn, resp)
+			s.logger.Debug("cancel_sm_resp sent")
 
 		default:
 			s.logger.Warn("unhandled PDU command from client",

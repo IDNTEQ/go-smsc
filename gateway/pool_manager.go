@@ -22,6 +22,8 @@ type SouthboundPoolConfig struct {
 	WindowSize            int    `json:"window_size"`
 	TLSEnabled            bool   `json:"tls_enabled"`
 	TLSInsecureSkipVerify bool   `json:"tls_insecure_skip_verify"`
+	BindMode              string `json:"bind_mode"`         // "transceiver", "transmitter", "receiver"
+	InterfaceVersion      string `json:"interface_version"` // "3.4" or "5.0"
 }
 
 // PoolHealth reports the health of a named pool.
@@ -61,6 +63,26 @@ func (pm *PoolManager) Add(ctx context.Context, cfg *SouthboundPoolConfig) error
 		return fmt.Errorf("pool %q already exists", cfg.Name)
 	}
 
+	// Map string bind mode to smpp.BindMode.
+	var bindMode smpp.BindMode
+	switch cfg.BindMode {
+	case "transmitter":
+		bindMode = smpp.BindTransmitter
+	case "receiver":
+		bindMode = smpp.BindReceiver
+	default:
+		bindMode = smpp.BindTransceiver
+	}
+
+	// Map string interface version to byte.
+	var ifVersion byte
+	switch cfg.InterfaceVersion {
+	case "5.0":
+		ifVersion = 0x50
+	default:
+		ifVersion = 0x34
+	}
+
 	smppCfg := smpp.Config{
 		Host:                  cfg.Host,
 		Port:                  cfg.Port,
@@ -72,6 +94,8 @@ func (pm *PoolManager) Add(ctx context.Context, cfg *SouthboundPoolConfig) error
 		EnquireLinkSec:        30,
 		TLSEnabled:            cfg.TLSEnabled,
 		TLSInsecureSkipVerify: cfg.TLSInsecureSkipVerify,
+		BindMode:              bindMode,
+		InterfaceVersion:      ifVersion,
 	}
 
 	conns := cfg.Connections
