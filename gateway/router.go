@@ -61,7 +61,7 @@ type forwardTask struct {
 
 type Router struct {
 	server          *Server
-	southbound      *smpp.Pool
+	southbound      Submitter
 	poolManager     *PoolManager
 	mtRoutes        *MTRouteTable
 	moRoutes        *MORouteTable
@@ -182,7 +182,13 @@ func (r *Router) SetServer(s *Server) {
 // This is the backward-compatible path: when no route table is configured,
 // the southbound pool is used as the fallback for all outbound submits.
 func (r *Router) SetSouthbound(pool *smpp.Pool) {
-	r.southbound = pool
+	r.southbound = NewSMPPSubmitter(pool)
+}
+
+// SetSouthboundSubmitter sets the southbound submitter directly.
+// Use this when setting a gRPC bind or a pre-wrapped SMPPSubmitter.
+func (r *Router) SetSouthboundSubmitter(s Submitter) {
+	r.southbound = s
 }
 
 // SetPoolManager sets the multi-pool manager for route-based pool selection.
@@ -488,19 +494,19 @@ func (r *Router) forwardSubmitRaw(c *Connection, gwMsgID, destAddr, sourceAddr s
 	}
 
 	// Try route table first, fall back to single pool.
-	var pool *smpp.Pool
+	var sub Submitter
 	if r.poolManager != nil && r.mtRoutes != nil {
-		p, _, resolveErr := r.mtRoutes.Resolve(destAddr, r.poolManager)
-		if resolveErr == nil && p != nil {
-			pool = p
+		s, _, resolveErr := r.mtRoutes.Resolve(destAddr, r.poolManager)
+		if resolveErr == nil && s != nil {
+			sub = s
 			r.metrics.RouteResolutions.WithLabelValues("mt", "routed").Inc()
 		}
 	}
-	if pool == nil && r.southbound != nil {
-		pool = r.southbound
+	if sub == nil && r.southbound != nil {
+		sub = r.southbound
 		r.metrics.RouteResolutions.WithLabelValues("mt", "fallback").Inc()
 	}
-	if pool == nil {
+	if sub == nil {
 		r.logger.Error("no southbound pool available",
 			zap.String("gw_msg_id", gwMsgID),
 			zap.String("dest", destAddr),
@@ -511,7 +517,7 @@ func (r *Router) forwardSubmitRaw(c *Connection, gwMsgID, destAddr, sourceAddr s
 		return
 	}
 
-	resp, err := pool.SubmitRaw(rawBody)
+	resp, err := sub.SubmitRaw(rawBody)
 	if err != nil {
 		r.logger.Warn("southbound submit failed",
 			zap.String("conn_id", connID),
@@ -1151,22 +1157,22 @@ func (r *Router) drainSubmitRetries() {
 		r.metrics.SubmitRetryTotal.Inc()
 
 		// Try route table first, fall back to single pool.
-		var pool *smpp.Pool
+		var sub Submitter
 		if r.poolManager != nil && r.mtRoutes != nil {
-			rp, _, resolveErr := r.mtRoutes.Resolve(p.MSISDN, r.poolManager)
-			if resolveErr == nil && rp != nil {
-				pool = rp
+			rs, _, resolveErr := r.mtRoutes.Resolve(p.MSISDN, r.poolManager)
+			if resolveErr == nil && rs != nil {
+				sub = rs
 			}
 		}
-		if pool == nil && r.southbound != nil {
-			pool = r.southbound
+		if sub == nil && r.southbound != nil {
+			sub = r.southbound
 		}
-		if pool == nil {
+		if sub == nil {
 			r.enqueueSubmitRetryOrFail(p.GwMsgID, p.ConnID, p.MSISDN, p.SourceAddr, p.RawBody, p.RetryCount)
 			continue
 		}
 
-		resp, err := pool.SubmitRaw(p.RawBody)
+		resp, err := sub.SubmitRaw(p.RawBody)
 		if err != nil || resp.Error != nil {
 			// Still failing — retry or give up.
 			r.enqueueSubmitRetryOrFail(p.GwMsgID, p.ConnID, p.MSISDN, p.SourceAddr, p.RawBody, p.RetryCount)

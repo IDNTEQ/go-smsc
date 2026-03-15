@@ -6,8 +6,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-
-	"github.com/idnteq/go-smsc/smpp"
 )
 
 // MTRoute defines a route for outbound (MT) messages.
@@ -35,10 +33,10 @@ func NewMTRouteTable() *MTRouteTable {
 	return &MTRouteTable{}
 }
 
-// Resolve finds the best pool for the given MSISDN.
+// Resolve finds the best Submitter for the given MSISDN.
 // It matches the longest prefix first, then applies the route's strategy
-// (failover, round_robin, or least_cost) to select a healthy pool.
-func (t *MTRouteTable) Resolve(msisdn string, pm *PoolManager) (*smpp.Pool, string, error) {
+// (failover, round_robin, or least_cost) to select a healthy submitter.
+func (t *MTRouteTable) Resolve(msisdn string, pm *PoolManager) (Submitter, string, error) {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
@@ -47,17 +45,17 @@ func (t *MTRouteTable) Resolve(msisdn string, pm *PoolManager) (*smpp.Pool, stri
 			continue
 		}
 		// This route matches.
-		pool, name, err := t.applyStrategy(route, pm)
+		sub, name, err := t.applyStrategy(route, pm)
 		if err != nil {
 			return nil, "", fmt.Errorf("route %q matched but %w", route.Prefix, err)
 		}
-		return pool, name, nil
+		return sub, name, nil
 	}
 	return nil, "", fmt.Errorf("no route for MSISDN %q", msisdn)
 }
 
-// applyStrategy selects a healthy pool from the route according to its strategy.
-func (t *MTRouteTable) applyStrategy(route *MTRoute, pm *PoolManager) (*smpp.Pool, string, error) {
+// applyStrategy selects a healthy submitter from the route according to its strategy.
+func (t *MTRouteTable) applyStrategy(route *MTRoute, pm *PoolManager) (Submitter, string, error) {
 	switch route.Strategy {
 	case "failover":
 		return t.resolveFailover(route, pm)
@@ -71,13 +69,13 @@ func (t *MTRouteTable) applyStrategy(route *MTRoute, pm *PoolManager) (*smpp.Poo
 }
 
 // resolveFailover iterates pools in order and returns the first healthy one.
-func (t *MTRouteTable) resolveFailover(route *MTRoute, pm *PoolManager) (*smpp.Pool, string, error) {
+func (t *MTRouteTable) resolveFailover(route *MTRoute, pm *PoolManager) (Submitter, string, error) {
 	for _, rp := range route.Pools {
 		h := pm.Health(rp.Name)
 		if h.Healthy {
-			pool, ok := pm.Get(rp.Name)
+			sub, ok := pm.GetSubmitter(rp.Name)
 			if ok {
-				return pool, rp.Name, nil
+				return sub, rp.Name, nil
 			}
 		}
 	}
@@ -85,7 +83,7 @@ func (t *MTRouteTable) resolveFailover(route *MTRoute, pm *PoolManager) (*smpp.P
 }
 
 // resolveRoundRobin uses an atomic counter to distribute across healthy pools.
-func (t *MTRouteTable) resolveRoundRobin(route *MTRoute, pm *PoolManager) (*smpp.Pool, string, error) {
+func (t *MTRouteTable) resolveRoundRobin(route *MTRoute, pm *PoolManager) (Submitter, string, error) {
 	n := len(route.Pools)
 	if n == 0 {
 		return nil, "", fmt.Errorf("no pools configured for round_robin route")
@@ -96,9 +94,9 @@ func (t *MTRouteTable) resolveRoundRobin(route *MTRoute, pm *PoolManager) (*smpp
 		candidate := route.Pools[(int(idx)+i)%n]
 		h := pm.Health(candidate.Name)
 		if h.Healthy {
-			pool, ok := pm.Get(candidate.Name)
+			sub, ok := pm.GetSubmitter(candidate.Name)
 			if ok {
-				return pool, candidate.Name, nil
+				return sub, candidate.Name, nil
 			}
 		}
 	}
@@ -106,7 +104,7 @@ func (t *MTRouteTable) resolveRoundRobin(route *MTRoute, pm *PoolManager) (*smpp
 }
 
 // resolveLeastCost sorts pools by cost ascending and returns the cheapest healthy one.
-func (t *MTRouteTable) resolveLeastCost(route *MTRoute, pm *PoolManager) (*smpp.Pool, string, error) {
+func (t *MTRouteTable) resolveLeastCost(route *MTRoute, pm *PoolManager) (Submitter, string, error) {
 	// Copy to avoid mutating the route's pool order.
 	sorted := make([]RoutePool, len(route.Pools))
 	copy(sorted, route.Pools)
@@ -117,9 +115,9 @@ func (t *MTRouteTable) resolveLeastCost(route *MTRoute, pm *PoolManager) (*smpp.
 	for _, rp := range sorted {
 		h := pm.Health(rp.Name)
 		if h.Healthy {
-			pool, ok := pm.Get(rp.Name)
+			sub, ok := pm.GetSubmitter(rp.Name)
 			if ok {
-				return pool, rp.Name, nil
+				return sub, rp.Name, nil
 			}
 		}
 	}

@@ -777,6 +777,7 @@ function BindsPage() {
 
     // Form state
     const [name, setName] = useState('');
+    const [bindType, setBindType] = useState('smpp');
     const [host, setHost] = useState('');
     const [port, setPort] = useState('2775');
     const [systemId, setSystemId] = useState('');
@@ -787,12 +788,13 @@ function BindsPage() {
     const [bindMode, setBindMode] = useState('transceiver');
     const [interfaceVersion, setInterfaceVersion] = useState('3.4');
     const [tlsEnabled, setTlsEnabled] = useState(false);
+    const [grpcAddress, setGrpcAddress] = useState('');
 
     const resetForm = () => {
-        setName(''); setHost(''); setPort('2775'); setSystemId('');
+        setName(''); setBindType('smpp'); setHost(''); setPort('2775'); setSystemId('');
         setPassword(''); setSourceAddr(''); setConnections('2');
         setWindowSize('10'); setBindMode('transceiver');
-        setInterfaceVersion('3.4'); setTlsEnabled(false);
+        setInterfaceVersion('3.4'); setTlsEnabled(false); setGrpcAddress('');
     };
 
     const refresh = useCallback(() => {
@@ -808,19 +810,22 @@ function BindsPage() {
     const createPool = async (e) => {
         e.preventDefault();
         try {
-            await api('POST', '/admin/api/pools', {
-                name,
-                host,
-                port: parseInt(port) || 2775,
-                system_id: systemId,
-                password,
-                source_addr: sourceAddr,
-                connections: parseInt(connections) || 2,
-                window_size: parseInt(windowSize) || 10,
-                bind_mode: bindMode,
-                interface_version: interfaceVersion,
-                tls_enabled: tlsEnabled,
-            });
+            const body = { name, bind_type: bindType };
+            if (bindType === 'grpc') {
+                body.grpc_address = grpcAddress;
+            } else {
+                body.host = host;
+                body.port = parseInt(port) || 2775;
+                body.system_id = systemId;
+                body.password = password;
+                body.source_addr = sourceAddr;
+                body.connections = parseInt(connections) || 2;
+                body.window_size = parseInt(windowSize) || 10;
+                body.bind_mode = bindMode;
+                body.interface_version = interfaceVersion;
+                body.tls_enabled = tlsEnabled;
+            }
+            await api('POST', '/admin/api/pools', body);
             showToast('Bind created');
             resetForm();
             refresh();
@@ -842,7 +847,7 @@ function BindsPage() {
 
     return html`
         <h2>Binds</h2>
-        <p style="color: var(--pico-muted-color); margin-top: -0.5rem">Outbound SMSC connections (Gateway → SMSCs)</p>
+        <p style="color: var(--pico-muted-color); margin-top: -0.5rem">Outbound SMSC connections (Gateway → SMSCs / gRPC Adapters)</p>
 
         <div class="form-card">
             <h4>Add Bind</h4>
@@ -852,59 +857,77 @@ function BindsPage() {
                         <input type="text" value=${name}
                                onInput=${e => setName(e.target.value)} required />
                     </label>
-                    <label>Host
-                        <input type="text" value=${host}
-                               onInput=${e => setHost(e.target.value)} required />
-                    </label>
-                    <label>Port
-                        <input type="number" value=${port}
-                               onInput=${e => setPort(e.target.value)} required />
-                    </label>
-                </div>
-                <div class="form-grid">
-                    <label>System ID
-                        <input type="text" value=${systemId}
-                               onInput=${e => setSystemId(e.target.value)} required />
-                    </label>
-                    <label>Password
-                        <input type="password" value=${password}
-                               onInput=${e => setPassword(e.target.value)} required />
-                    </label>
-                    <label>Source Addr
-                        <input type="text" value=${sourceAddr}
-                               onInput=${e => setSourceAddr(e.target.value)} />
-                    </label>
-                </div>
-                <div class="form-grid">
-                    <label>Connections
-                        <input type="number" value=${connections} min="1"
-                               onInput=${e => setConnections(e.target.value)} />
-                    </label>
-                    <label>Window Size
-                        <input type="number" value=${windowSize} min="1"
-                               onInput=${e => setWindowSize(e.target.value)} />
-                    </label>
-                    <label>Bind Mode
-                        <select value=${bindMode} onChange=${e => setBindMode(e.target.value)}>
-                            <option value="transceiver">Transceiver</option>
-                            <option value="transmitter">Transmitter</option>
-                            <option value="receiver">Receiver</option>
-                        </select>
-                    </label>
-                    <label>Interface Version
-                        <select value=${interfaceVersion} onChange=${e => setInterfaceVersion(e.target.value)}>
-                            <option value="3.4">3.4</option>
-                            <option value="5.0">5.0</option>
+                    <label>Bind Type
+                        <select value=${bindType} onChange=${e => setBindType(e.target.value)}>
+                            <option value="smpp">SMPP</option>
+                            <option value="grpc">gRPC</option>
                         </select>
                     </label>
                 </div>
-                <div style="margin-bottom: 0.75rem">
-                    <label class="checkbox-label">
-                        <input type="checkbox" checked=${tlsEnabled}
-                               onChange=${e => setTlsEnabled(e.target.checked)} />
-                        TLS Enabled
-                    </label>
-                </div>
+                ${bindType === 'grpc' ? html`
+                    <div class="form-grid">
+                        <label>gRPC Address (host:port)
+                            <input type="text" value=${grpcAddress}
+                                   onInput=${e => setGrpcAddress(e.target.value)}
+                                   placeholder="adapter.example.com:50051" required />
+                        </label>
+                    </div>
+                ` : html`
+                    <div class="form-grid">
+                        <label>Host
+                            <input type="text" value=${host}
+                                   onInput=${e => setHost(e.target.value)} required />
+                        </label>
+                        <label>Port
+                            <input type="number" value=${port}
+                                   onInput=${e => setPort(e.target.value)} required />
+                        </label>
+                    </div>
+                    <div class="form-grid">
+                        <label>System ID
+                            <input type="text" value=${systemId}
+                                   onInput=${e => setSystemId(e.target.value)} required />
+                        </label>
+                        <label>Password
+                            <input type="password" value=${password}
+                                   onInput=${e => setPassword(e.target.value)} required />
+                        </label>
+                        <label>Source Addr
+                            <input type="text" value=${sourceAddr}
+                                   onInput=${e => setSourceAddr(e.target.value)} />
+                        </label>
+                    </div>
+                    <div class="form-grid">
+                        <label>Connections
+                            <input type="number" value=${connections} min="1"
+                                   onInput=${e => setConnections(e.target.value)} />
+                        </label>
+                        <label>Window Size
+                            <input type="number" value=${windowSize} min="1"
+                                   onInput=${e => setWindowSize(e.target.value)} />
+                        </label>
+                        <label>Bind Mode
+                            <select value=${bindMode} onChange=${e => setBindMode(e.target.value)}>
+                                <option value="transceiver">Transceiver</option>
+                                <option value="transmitter">Transmitter</option>
+                                <option value="receiver">Receiver</option>
+                            </select>
+                        </label>
+                        <label>Interface Version
+                            <select value=${interfaceVersion} onChange=${e => setInterfaceVersion(e.target.value)}>
+                                <option value="3.4">3.4</option>
+                                <option value="5.0">5.0</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div style="margin-bottom: 0.75rem">
+                        <label class="checkbox-label">
+                            <input type="checkbox" checked=${tlsEnabled}
+                                   onChange=${e => setTlsEnabled(e.target.checked)} />
+                            TLS Enabled
+                        </label>
+                    </div>
+                `}
                 <button type="submit">Create Bind</button>
             </form>
         </div>
@@ -916,7 +939,8 @@ function BindsPage() {
                     <thead>
                         <tr>
                             <th>Name</th>
-                            <th>Host:Port</th>
+                            <th>Type</th>
+                            <th>Address</th>
                             <th>System ID</th>
                             <th>Conns</th>
                             <th>Window</th>
@@ -931,12 +955,13 @@ function BindsPage() {
                         ${pools.map(p => html`
                             <tr key=${p.name}>
                                 <td>${p.name}</td>
-                                <td>${p.host}:${p.port}</td>
-                                <td>${p.system_id}</td>
-                                <td>${p.connections}</td>
-                                <td>${p.window_size}</td>
-                                <td>${p.bind_mode || 'transceiver'}</td>
-                                <td>${p.interface_version || '3.4'}</td>
+                                <td>${(p.bind_type || 'smpp').toUpperCase()}</td>
+                                <td>${p.bind_type === 'grpc' ? p.grpc_address : (p.host + ':' + p.port)}</td>
+                                <td>${p.bind_type === 'grpc' ? '-' : p.system_id}</td>
+                                <td>${p.bind_type === 'grpc' ? '-' : p.connections}</td>
+                                <td>${p.bind_type === 'grpc' ? '-' : p.window_size}</td>
+                                <td>${p.bind_type === 'grpc' ? '-' : (p.bind_mode || 'transceiver')}</td>
+                                <td>${p.bind_type === 'grpc' ? '-' : (p.interface_version || '3.4')}</td>
                                 <td>${p.active_connections}</td>
                                 <td>${statusBadge(p.healthy ? 'healthy' : 'unhealthy')}</td>
                                 <td>
