@@ -25,8 +25,6 @@ type SouthboundPoolConfig struct {
 	TLSInsecureSkipVerify bool   `json:"tls_insecure_skip_verify"`
 	BindMode              string `json:"bind_mode"`         // "transceiver", "transmitter", "receiver"
 	InterfaceVersion      string `json:"interface_version"` // "3.4" or "5.0"
-	BindType              string `json:"bind_type"`         // "smpp" (default) or "grpc"
-	GRPCAddress           string `json:"grpc_address"`      // host:port for gRPC (when BindType=grpc)
 }
 
 // PoolHealth reports the health of a named pool.
@@ -58,7 +56,7 @@ func NewPoolManager(handler smpp.DeliverHandler, logger *zap.Logger) *PoolManage
 	}
 }
 
-// Add creates and connects a new named southbound pool or gRPC bind.
+// Add creates and connects a new named southbound pool.
 // Returns an error if the name is already taken or if all connections fail.
 func (pm *PoolManager) Add(ctx context.Context, cfg *SouthboundPoolConfig) error {
 	pm.mu.Lock()
@@ -72,9 +70,6 @@ func (pm *PoolManager) Add(ctx context.Context, cfg *SouthboundPoolConfig) error
 		return fmt.Errorf("pool %q already exists", cfg.Name)
 	}
 
-	if cfg.BindType == "grpc" {
-		return pm.addGRPC(ctx, cfg)
-	}
 	return pm.addSMPP(ctx, cfg)
 }
 
@@ -151,27 +146,6 @@ func (pm *PoolManager) addSMPP(ctx context.Context, cfg *SouthboundPoolConfig) e
 	return nil
 }
 
-// addGRPC creates a gRPC bind and registers it.
-func (pm *PoolManager) addGRPC(ctx context.Context, cfg *SouthboundPoolConfig) error {
-	if cfg.GRPCAddress == "" {
-		return fmt.Errorf("grpc_address is required for bind_type=grpc")
-	}
-
-	bind := NewGRPCBind(cfg.Name, cfg.GRPCAddress, pm.handler, pm.logger)
-	if err := bind.Connect(ctx); err != nil {
-		return fmt.Errorf("connect grpc bind %q: %w", cfg.Name, err)
-	}
-
-	pm.submitters[cfg.Name] = bind
-	pm.configs[cfg.Name] = cfg
-	pm.logger.Info("southbound gRPC bind added",
-		zap.String("name", cfg.Name),
-		zap.String("bind_type", "grpc"),
-		zap.String("address", cfg.GRPCAddress),
-	)
-	return nil
-}
-
 // Get returns the SMPP pool with the given name and true, or nil and false if
 // not found. For backward compatibility only; prefer GetSubmitter for new code.
 func (pm *PoolManager) Get(name string) (*smpp.Pool, bool) {
@@ -181,8 +155,7 @@ func (pm *PoolManager) Get(name string) (*smpp.Pool, bool) {
 	return p, ok
 }
 
-// GetSubmitter returns the Submitter with the given name. Works for both SMPP
-// pools and gRPC binds.
+// GetSubmitter returns the Submitter with the given name.
 func (pm *PoolManager) GetSubmitter(name string) (Submitter, bool) {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
@@ -190,7 +163,7 @@ func (pm *PoolManager) GetSubmitter(name string) (Submitter, bool) {
 	return s, ok
 }
 
-// Remove closes and removes the named pool or gRPC bind. Returns an error if not found.
+// Remove closes and removes the named pool. Returns an error if not found.
 func (pm *PoolManager) Remove(name string) error {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
@@ -217,7 +190,7 @@ func (pm *PoolManager) Remove(name string) error {
 	return nil
 }
 
-// Health returns the health status of a named pool or gRPC bind. If the pool
+// Health returns the health status of a named pool. If the pool
 // does not exist, it returns an unhealthy PoolHealth.
 func (pm *PoolManager) Health(name string) PoolHealth {
 	pm.mu.RLock()
@@ -237,7 +210,7 @@ func (pm *PoolManager) Health(name string) PoolHealth {
 	return PoolHealth{Name: name, ActiveConnections: active, Healthy: active > 0}
 }
 
-// AllHealth returns the health status of every managed pool and gRPC bind.
+// AllHealth returns the health status of every managed pool.
 func (pm *PoolManager) AllHealth() []PoolHealth {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
@@ -276,11 +249,10 @@ type PoolListEntry struct {
 	ActiveConnections int    `json:"active_connections"`
 	Healthy           bool   `json:"healthy"`
 	BindType          string `json:"bind_type"`
-	GRPCAddress       string `json:"grpc_address,omitempty"`
 }
 
 // ListWithHealth returns pool configuration merged with live health for every
-// managed pool and gRPC bind, sorted by name.
+// managed pool, sorted by name.
 func (pm *PoolManager) ListWithHealth() []PoolListEntry {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
@@ -306,10 +278,6 @@ func (pm *PoolManager) ListWithHealth() []PoolListEntry {
 			entry.WindowSize = cfg.WindowSize
 			entry.BindMode = cfg.BindMode
 			entry.InterfaceVersion = cfg.InterfaceVersion
-			entry.GRPCAddress = cfg.GRPCAddress
-			if entry.BindType == "" {
-				entry.BindType = cfg.BindType
-			}
 		}
 		if entry.BindType == "" {
 			entry.BindType = "smpp"
@@ -356,7 +324,7 @@ func (pm *PoolManager) GetConfig(name string) *SouthboundPoolConfig {
 	return pm.configs[name]
 }
 
-// Names returns the names of all managed pools and gRPC binds (unordered).
+// Names returns the names of all managed pools (unordered).
 func (pm *PoolManager) Names() []string {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
@@ -382,7 +350,7 @@ func (pm *PoolManager) PoolNames() []string {
 	return names
 }
 
-// Close shuts down all managed pools and gRPC binds and clears internal state.
+// Close shuts down all managed pools and clears internal state.
 func (pm *PoolManager) Close() {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
