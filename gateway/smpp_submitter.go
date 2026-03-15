@@ -32,11 +32,6 @@ func (s *SMPPSubmitter) Close() error {
 	return s.pool.Close()
 }
 
-// BindType returns "smpp".
-func (s *SMPPSubmitter) BindType() string {
-	return "smpp"
-}
-
 // Pool returns the underlying smpp.Pool for backward compatibility.
 func (s *SMPPSubmitter) Pool() *smpp.Pool {
 	return s.pool

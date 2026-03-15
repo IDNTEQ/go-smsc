@@ -15,7 +15,4 @@ type Submitter interface {
 
 	// Close shuts down the submitter.
 	Close() error
-
-	// BindType returns "smpp".
-	BindType() string
 }

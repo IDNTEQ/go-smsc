@@ -138,7 +138,6 @@ func (pm *PoolManager) addSMPP(ctx context.Context, cfg *SouthboundPoolConfig) e
 	pm.configs[cfg.Name] = cfg
 	pm.logger.Info("southbound pool added",
 		zap.String("name", cfg.Name),
-		zap.String("bind_type", "smpp"),
 		zap.String("host", cfg.Host),
 		zap.Int("port", cfg.Port),
 		zap.Int("connections", conns),
@@ -248,7 +247,6 @@ type PoolListEntry struct {
 	InterfaceVersion  string `json:"interface_version"`
 	ActiveConnections int    `json:"active_connections"`
 	Healthy           bool   `json:"healthy"`
-	BindType          string `json:"bind_type"`
 }
 
 // ListWithHealth returns pool configuration merged with live health for every
@@ -268,7 +266,6 @@ func (pm *PoolManager) ListWithHealth() []PoolListEntry {
 			Name:              name,
 			ActiveConnections: active,
 			Healthy:           sub.IsHealthy(),
-			BindType:          sub.BindType(),
 		}
 		if cfg != nil {
 			entry.Host = cfg.Host
@@ -278,9 +275,6 @@ func (pm *PoolManager) ListWithHealth() []PoolListEntry {
 			entry.WindowSize = cfg.WindowSize
 			entry.BindMode = cfg.BindMode
 			entry.InterfaceVersion = cfg.InterfaceVersion
-		}
-		if entry.BindType == "" {
-			entry.BindType = "smpp"
 		}
 		result = append(result, entry)
 	}
@@ -296,7 +290,6 @@ func (pm *PoolManager) ListWithHealth() []PoolListEntry {
 			Name:              name,
 			ActiveConnections: active,
 			Healthy:           active > 0,
-			BindType:          "smpp",
 		}
 		if cfg != nil {
 			entry.Host = cfg.Host
