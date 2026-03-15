@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.1
 // - protoc             v5.28.3
-// source: proto/smscv1/adapter.proto
+// source: proto/smscv1/sms.proto
 
 package smscv1
 
@@ -21,25 +21,24 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	SMSAdapterService_SubmitMT_FullMethodName         = "/smsc.v1.SMSAdapterService/SubmitMT"
 	SMSAdapterService_StreamDeliveries_FullMethodName = "/smsc.v1.SMSAdapterService/StreamDeliveries"
-	SMSAdapterService_GetStatus_FullMethodName        = "/smsc.v1.SMSAdapterService/GetStatus"
 	SMSAdapterService_CancelMT_FullMethodName         = "/smsc.v1.SMSAdapterService/CancelMT"
+	SMSAdapterService_GetStatus_FullMethodName        = "/smsc.v1.SMSAdapterService/GetStatus"
 )
 
 // SMSAdapterServiceClient is the client API for SMSAdapterService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// SMSAdapterService is implemented by downstream adapters (SS7, HTTP, etc.).
-// The SMSC gateway connects as a gRPC client.
+// SMSAdapterService handles SMS delivery over downstream networks.
 type SMSAdapterServiceClient interface {
 	// Submit an MT-SMS for delivery.
 	SubmitMT(ctx context.Context, in *SubmitMTRequest, opts ...grpc.CallOption) (*SubmitMTResponse, error)
 	// Server-streaming channel for MO-SMS, DLRs, and alerts from the network.
 	StreamDeliveries(ctx context.Context, in *StreamDeliveriesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DeliveryMessage], error)
-	// Query adapter health and link status.
-	GetStatus(ctx context.Context, in *GetStatusRequest, opts ...grpc.CallOption) (*AdapterStatus, error)
 	// Cancel a previously submitted MT-SMS.
 	CancelMT(ctx context.Context, in *CancelMTRequest, opts ...grpc.CallOption) (*CancelMTResponse, error)
+	// Query adapter health and SMS counters.
+	GetStatus(ctx context.Context, in *GetStatusRequest, opts ...grpc.CallOption) (*SMSAdapterStatus, error)
 }
 
 type sMSAdapterServiceClient struct {
@@ -79,16 +78,6 @@ func (c *sMSAdapterServiceClient) StreamDeliveries(ctx context.Context, in *Stre
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type SMSAdapterService_StreamDeliveriesClient = grpc.ServerStreamingClient[DeliveryMessage]
 
-func (c *sMSAdapterServiceClient) GetStatus(ctx context.Context, in *GetStatusRequest, opts ...grpc.CallOption) (*AdapterStatus, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(AdapterStatus)
-	err := c.cc.Invoke(ctx, SMSAdapterService_GetStatus_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *sMSAdapterServiceClient) CancelMT(ctx context.Context, in *CancelMTRequest, opts ...grpc.CallOption) (*CancelMTResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CancelMTResponse)
@@ -99,21 +88,30 @@ func (c *sMSAdapterServiceClient) CancelMT(ctx context.Context, in *CancelMTRequ
 	return out, nil
 }
 
+func (c *sMSAdapterServiceClient) GetStatus(ctx context.Context, in *GetStatusRequest, opts ...grpc.CallOption) (*SMSAdapterStatus, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SMSAdapterStatus)
+	err := c.cc.Invoke(ctx, SMSAdapterService_GetStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SMSAdapterServiceServer is the server API for SMSAdapterService service.
 // All implementations must embed UnimplementedSMSAdapterServiceServer
 // for forward compatibility.
 //
-// SMSAdapterService is implemented by downstream adapters (SS7, HTTP, etc.).
-// The SMSC gateway connects as a gRPC client.
+// SMSAdapterService handles SMS delivery over downstream networks.
 type SMSAdapterServiceServer interface {
 	// Submit an MT-SMS for delivery.
 	SubmitMT(context.Context, *SubmitMTRequest) (*SubmitMTResponse, error)
 	// Server-streaming channel for MO-SMS, DLRs, and alerts from the network.
 	StreamDeliveries(*StreamDeliveriesRequest, grpc.ServerStreamingServer[DeliveryMessage]) error
-	// Query adapter health and link status.
-	GetStatus(context.Context, *GetStatusRequest) (*AdapterStatus, error)
 	// Cancel a previously submitted MT-SMS.
 	CancelMT(context.Context, *CancelMTRequest) (*CancelMTResponse, error)
+	// Query adapter health and SMS counters.
+	GetStatus(context.Context, *GetStatusRequest) (*SMSAdapterStatus, error)
 	mustEmbedUnimplementedSMSAdapterServiceServer()
 }
 
@@ -130,11 +128,11 @@ func (UnimplementedSMSAdapterServiceServer) SubmitMT(context.Context, *SubmitMTR
 func (UnimplementedSMSAdapterServiceServer) StreamDeliveries(*StreamDeliveriesRequest, grpc.ServerStreamingServer[DeliveryMessage]) error {
 	return status.Error(codes.Unimplemented, "method StreamDeliveries not implemented")
 }
-func (UnimplementedSMSAdapterServiceServer) GetStatus(context.Context, *GetStatusRequest) (*AdapterStatus, error) {
-	return nil, status.Error(codes.Unimplemented, "method GetStatus not implemented")
-}
 func (UnimplementedSMSAdapterServiceServer) CancelMT(context.Context, *CancelMTRequest) (*CancelMTResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CancelMT not implemented")
+}
+func (UnimplementedSMSAdapterServiceServer) GetStatus(context.Context, *GetStatusRequest) (*SMSAdapterStatus, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetStatus not implemented")
 }
 func (UnimplementedSMSAdapterServiceServer) mustEmbedUnimplementedSMSAdapterServiceServer() {}
 func (UnimplementedSMSAdapterServiceServer) testEmbeddedByValue()                           {}
@@ -186,24 +184,6 @@ func _SMSAdapterService_StreamDeliveries_Handler(srv interface{}, stream grpc.Se
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type SMSAdapterService_StreamDeliveriesServer = grpc.ServerStreamingServer[DeliveryMessage]
 
-func _SMSAdapterService_GetStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetStatusRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(SMSAdapterServiceServer).GetStatus(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: SMSAdapterService_GetStatus_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SMSAdapterServiceServer).GetStatus(ctx, req.(*GetStatusRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _SMSAdapterService_CancelMT_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CancelMTRequest)
 	if err := dec(in); err != nil {
@@ -222,6 +202,24 @@ func _SMSAdapterService_CancelMT_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SMSAdapterService_GetStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SMSAdapterServiceServer).GetStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SMSAdapterService_GetStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SMSAdapterServiceServer).GetStatus(ctx, req.(*GetStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SMSAdapterService_ServiceDesc is the grpc.ServiceDesc for SMSAdapterService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -234,12 +232,12 @@ var SMSAdapterService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _SMSAdapterService_SubmitMT_Handler,
 		},
 		{
-			MethodName: "GetStatus",
-			Handler:    _SMSAdapterService_GetStatus_Handler,
-		},
-		{
 			MethodName: "CancelMT",
 			Handler:    _SMSAdapterService_CancelMT_Handler,
+		},
+		{
+			MethodName: "GetStatus",
+			Handler:    _SMSAdapterService_GetStatus_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
@@ -249,5 +247,5 @@ var SMSAdapterService_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: "proto/smscv1/adapter.proto",
+	Metadata: "proto/smscv1/sms.proto",
 }

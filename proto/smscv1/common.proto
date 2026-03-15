@@ -1,0 +1,25 @@
+syntax = "proto3";
+package smsc.v1;
+
+option go_package = "github.com/idnteq/go-smsc/proto/smscv1";
+option java_package = "com.idnteq.ss7gw.proto";
+
+// Shared status and management types used by all adapter services.
+
+message GetStatusRequest {}
+
+message AdapterStatus {
+  string adapter_id = 1;
+  string adapter_version = 2;
+  bool healthy = 3;
+  repeated LinkStatus links = 4;
+  int64 active_dialogs = 5;
+}
+
+message LinkStatus {
+  string name = 1;
+  string state = 2;          // up, down, inactive, pending
+  string peer_address = 3;
+  int64 messages_sent = 4;
+  int64 messages_received = 5;
+}

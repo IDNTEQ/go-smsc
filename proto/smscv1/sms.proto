@@ -2,9 +2,11 @@ syntax = "proto3";
 package smsc.v1;
 
 option go_package = "github.com/idnteq/go-smsc/proto/smscv1";
+option java_package = "com.idnteq.ss7gw.proto";
 
-// SMSAdapterService is implemented by downstream adapters (SS7, HTTP, etc.).
-// The SMSC gateway connects as a gRPC client.
+import "proto/smscv1/common.proto";
+
+// SMSAdapterService handles SMS delivery over downstream networks.
 service SMSAdapterService {
   // Submit an MT-SMS for delivery.
   rpc SubmitMT(SubmitMTRequest) returns (SubmitMTResponse);
@@ -12,11 +14,11 @@ service SMSAdapterService {
   // Server-streaming channel for MO-SMS, DLRs, and alerts from the network.
   rpc StreamDeliveries(StreamDeliveriesRequest) returns (stream DeliveryMessage);
 
-  // Query adapter health and link status.
-  rpc GetStatus(GetStatusRequest) returns (AdapterStatus);
-
   // Cancel a previously submitted MT-SMS.
   rpc CancelMT(CancelMTRequest) returns (CancelMTResponse);
+
+  // Query adapter health and SMS counters.
+  rpc GetStatus(GetStatusRequest) returns (SMSAdapterStatus);
 }
 
 // -------------------------------------------------------------------
@@ -84,33 +86,6 @@ enum DeliveryType {
   ALERT = 3;
 }
 
-// -------------------------------------------------------------------
-// Status + Management
-// -------------------------------------------------------------------
-
-message GetStatusRequest {}
-
-message AdapterStatus {
-  string adapter_id = 1;
-  string adapter_version = 2;
-  bool healthy = 3;
-  repeated LinkStatus links = 4;
-  int64 mt_submitted = 5;
-  int64 mt_delivered = 6;
-  int64 mt_failed = 7;
-  int64 mo_received = 8;
-  int64 dlr_received = 9;
-  int64 active_dialogs = 10;
-}
-
-message LinkStatus {
-  string name = 1;
-  string state = 2;
-  string peer_address = 3;
-  int64 messages_sent = 4;
-  int64 messages_received = 5;
-}
-
 message CancelMTRequest {
   string message_id = 1;
 }
@@ -118,4 +93,14 @@ message CancelMTRequest {
 message CancelMTResponse {
   uint32 status = 1;
   string error_message = 2;
+}
+
+// SMS-specific status extending the common AdapterStatus.
+message SMSAdapterStatus {
+  AdapterStatus base = 1;
+  int64 mt_submitted = 2;
+  int64 mt_delivered = 3;
+  int64 mt_failed = 4;
+  int64 mo_received = 5;
+  int64 dlr_received = 6;
 }

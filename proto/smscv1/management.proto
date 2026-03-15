@@ -1,0 +1,142 @@
+syntax = "proto3";
+package smsc.v1;
+
+option go_package = "github.com/idnteq/go-smsc/proto/smscv1";
+option java_package = "com.idnteq.ss7gw.proto";
+
+import "proto/smscv1/common.proto";
+
+// ManagementService provides runtime configuration and monitoring of the adapter.
+service ManagementService {
+  // --- Health & Status ---
+
+  // Get overall adapter status including all link states.
+  rpc GetStatus(GetStatusRequest) returns (AdapterStatus);
+
+  // --- SS7 Configuration ---
+
+  // List all SCTP associations with their current state.
+  rpc ListAssociations(ListAssociationsRequest) returns (ListAssociationsResponse);
+
+  // Start a stopped SCTP association.
+  rpc StartAssociation(AssociationRequest) returns (AssociationResponse);
+
+  // Stop a running SCTP association.
+  rpc StopAssociation(AssociationRequest) returns (AssociationResponse);
+
+  // --- SCCP / GTT ---
+
+  // List configured GTT rules.
+  rpc ListGTTRules(ListGTTRulesRequest) returns (ListGTTRulesResponse);
+
+  // Add a GTT rule at runtime.
+  rpc AddGTTRule(AddGTTRuleRequest) returns (AddGTTRuleResponse);
+
+  // Remove a GTT rule.
+  rpc RemoveGTTRule(RemoveGTTRuleRequest) returns (RemoveGTTRuleResponse);
+
+  // --- Counters ---
+
+  // Get detailed message counters.
+  rpc GetCounters(GetCountersRequest) returns (Counters);
+
+  // Reset all counters.
+  rpc ResetCounters(ResetCountersRequest) returns (ResetCountersResponse);
+}
+
+// -------------------------------------------------------------------
+// Associations
+// -------------------------------------------------------------------
+
+message ListAssociationsRequest {}
+
+message ListAssociationsResponse {
+  repeated AssociationInfo associations = 1;
+}
+
+message AssociationInfo {
+  string name = 1;
+  string local_address = 2;    // host:port
+  string peer_address = 3;     // host:port
+  string state = 4;            // up, down, connecting
+  int64 uptime_seconds = 5;
+  int64 messages_sent = 6;
+  int64 messages_received = 7;
+}
+
+message AssociationRequest {
+  string name = 1;
+}
+
+message AssociationResponse {
+  uint32 status = 1;
+  string error_message = 2;
+}
+
+// -------------------------------------------------------------------
+// GTT Rules
+// -------------------------------------------------------------------
+
+message ListGTTRulesRequest {}
+
+message ListGTTRulesResponse {
+  repeated GTTRule rules = 1;
+}
+
+message GTTRule {
+  int32 id = 1;
+  string digits_pattern = 2;   // e.g., "27*", "234*"
+  string mask = 3;             // K = keep, R = replace
+  string rule_type = 4;        // solitary, dominant, loadshared, broadcast
+  int32 primary_address_id = 5;
+  int32 backup_address_id = 6;
+  string primary_pc = 7;       // Point code of primary destination
+  int32 primary_ssn = 8;
+  string backup_pc = 9;
+  int32 backup_ssn = 10;
+}
+
+message AddGTTRuleRequest {
+  GTTRule rule = 1;
+}
+
+message AddGTTRuleResponse {
+  uint32 status = 1;
+  string error_message = 2;
+}
+
+message RemoveGTTRuleRequest {
+  int32 rule_id = 1;
+}
+
+message RemoveGTTRuleResponse {
+  uint32 status = 1;
+  string error_message = 2;
+}
+
+// -------------------------------------------------------------------
+// Counters
+// -------------------------------------------------------------------
+
+message GetCountersRequest {}
+
+message Counters {
+  int64 mt_submitted = 1;
+  int64 mt_delivered = 2;
+  int64 mt_failed = 3;
+  int64 mo_received = 4;
+  int64 dlr_received = 5;
+  int64 ussd_sessions_initiated = 6;
+  int64 ussd_sessions_received = 7;
+  int64 ussd_sessions_active = 8;
+  int64 sccp_messages_sent = 9;
+  int64 sccp_messages_received = 10;
+  int64 tcap_dialogs_active = 11;
+  int64 tcap_dialogs_total = 12;
+}
+
+message ResetCountersRequest {}
+
+message ResetCountersResponse {
+  uint32 status = 1;
+}

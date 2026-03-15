@@ -63,12 +63,15 @@ func (b *GRPCBind) Connect(ctx context.Context) error {
 		b.client = nil
 		return fmt.Errorf("grpc GetStatus %s: %w", b.addr, err)
 	}
-	b.healthy.Store(status.GetHealthy())
+	base := status.GetBase()
+	if base != nil {
+		b.healthy.Store(base.GetHealthy())
+	}
 
 	b.logger.Info("gRPC adapter connected",
 		zap.String("addr", b.addr),
-		zap.String("adapter_id", status.GetAdapterId()),
-		zap.Bool("healthy", status.GetHealthy()),
+		zap.String("adapter_id", base.GetAdapterId()),
+		zap.Bool("healthy", base.GetHealthy()),
 	)
 
 	// Start stream deliveries in the background.
@@ -256,7 +259,9 @@ func (b *GRPCBind) healthCheckLoop(ctx context.Context) {
 				b.logger.Warn("health check failed", zap.Error(err))
 				continue
 			}
-			b.healthy.Store(status.GetHealthy())
+			if status.GetBase() != nil {
+				b.healthy.Store(status.GetBase().GetHealthy())
+			}
 		}
 	}
 }

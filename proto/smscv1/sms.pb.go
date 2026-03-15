@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        v5.28.3
-// source: proto/smscv1/adapter.proto
+// source: proto/smscv1/sms.proto
 
 package smscv1
 
@@ -57,11 +57,11 @@ func (x DeliveryType) String() string {
 }
 
 func (DeliveryType) Descriptor() protoreflect.EnumDescriptor {
-	return file_proto_smscv1_adapter_proto_enumTypes[0].Descriptor()
+	return file_proto_smscv1_sms_proto_enumTypes[0].Descriptor()
 }
 
 func (DeliveryType) Type() protoreflect.EnumType {
-	return &file_proto_smscv1_adapter_proto_enumTypes[0]
+	return &file_proto_smscv1_sms_proto_enumTypes[0]
 }
 
 func (x DeliveryType) Number() protoreflect.EnumNumber {
@@ -70,7 +70,7 @@ func (x DeliveryType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use DeliveryType.Descriptor instead.
 func (DeliveryType) EnumDescriptor() ([]byte, []int) {
-	return file_proto_smscv1_adapter_proto_rawDescGZIP(), []int{0}
+	return file_proto_smscv1_sms_proto_rawDescGZIP(), []int{0}
 }
 
 type SubmitMTRequest struct {
@@ -96,7 +96,7 @@ type SubmitMTRequest struct {
 
 func (x *SubmitMTRequest) Reset() {
 	*x = SubmitMTRequest{}
-	mi := &file_proto_smscv1_adapter_proto_msgTypes[0]
+	mi := &file_proto_smscv1_sms_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -108,7 +108,7 @@ func (x *SubmitMTRequest) String() string {
 func (*SubmitMTRequest) ProtoMessage() {}
 
 func (x *SubmitMTRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_smscv1_adapter_proto_msgTypes[0]
+	mi := &file_proto_smscv1_sms_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -121,7 +121,7 @@ func (x *SubmitMTRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitMTRequest.ProtoReflect.Descriptor instead.
 func (*SubmitMTRequest) Descriptor() ([]byte, []int) {
-	return file_proto_smscv1_adapter_proto_rawDescGZIP(), []int{0}
+	return file_proto_smscv1_sms_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *SubmitMTRequest) GetMessageId() string {
@@ -240,7 +240,7 @@ type SubmitMTResponse struct {
 
 func (x *SubmitMTResponse) Reset() {
 	*x = SubmitMTResponse{}
-	mi := &file_proto_smscv1_adapter_proto_msgTypes[1]
+	mi := &file_proto_smscv1_sms_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -252,7 +252,7 @@ func (x *SubmitMTResponse) String() string {
 func (*SubmitMTResponse) ProtoMessage() {}
 
 func (x *SubmitMTResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_smscv1_adapter_proto_msgTypes[1]
+	mi := &file_proto_smscv1_sms_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -265,7 +265,7 @@ func (x *SubmitMTResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitMTResponse.ProtoReflect.Descriptor instead.
 func (*SubmitMTResponse) Descriptor() ([]byte, []int) {
-	return file_proto_smscv1_adapter_proto_rawDescGZIP(), []int{1}
+	return file_proto_smscv1_sms_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *SubmitMTResponse) GetMessageId() string {
@@ -299,7 +299,7 @@ type StreamDeliveriesRequest struct {
 
 func (x *StreamDeliveriesRequest) Reset() {
 	*x = StreamDeliveriesRequest{}
-	mi := &file_proto_smscv1_adapter_proto_msgTypes[2]
+	mi := &file_proto_smscv1_sms_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -311,7 +311,7 @@ func (x *StreamDeliveriesRequest) String() string {
 func (*StreamDeliveriesRequest) ProtoMessage() {}
 
 func (x *StreamDeliveriesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_smscv1_adapter_proto_msgTypes[2]
+	mi := &file_proto_smscv1_sms_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -324,7 +324,7 @@ func (x *StreamDeliveriesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamDeliveriesRequest.ProtoReflect.Descriptor instead.
 func (*StreamDeliveriesRequest) Descriptor() ([]byte, []int) {
-	return file_proto_smscv1_adapter_proto_rawDescGZIP(), []int{2}
+	return file_proto_smscv1_sms_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *StreamDeliveriesRequest) GetClientId() string {
@@ -367,7 +367,7 @@ type DeliveryMessage struct {
 
 func (x *DeliveryMessage) Reset() {
 	*x = DeliveryMessage{}
-	mi := &file_proto_smscv1_adapter_proto_msgTypes[3]
+	mi := &file_proto_smscv1_sms_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -379,7 +379,7 @@ func (x *DeliveryMessage) String() string {
 func (*DeliveryMessage) ProtoMessage() {}
 
 func (x *DeliveryMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_smscv1_adapter_proto_msgTypes[3]
+	mi := &file_proto_smscv1_sms_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -392,7 +392,7 @@ func (x *DeliveryMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeliveryMessage.ProtoReflect.Descriptor instead.
 func (*DeliveryMessage) Descriptor() ([]byte, []int) {
-	return file_proto_smscv1_adapter_proto_rawDescGZIP(), []int{3}
+	return file_proto_smscv1_sms_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *DeliveryMessage) GetDeliveryId() string {
@@ -521,234 +521,6 @@ func (x *DeliveryMessage) GetTlvs() map[string][]byte {
 	return nil
 }
 
-type GetStatusRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *GetStatusRequest) Reset() {
-	*x = GetStatusRequest{}
-	mi := &file_proto_smscv1_adapter_proto_msgTypes[4]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *GetStatusRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*GetStatusRequest) ProtoMessage() {}
-
-func (x *GetStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_smscv1_adapter_proto_msgTypes[4]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use GetStatusRequest.ProtoReflect.Descriptor instead.
-func (*GetStatusRequest) Descriptor() ([]byte, []int) {
-	return file_proto_smscv1_adapter_proto_rawDescGZIP(), []int{4}
-}
-
-type AdapterStatus struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	AdapterId      string                 `protobuf:"bytes,1,opt,name=adapter_id,json=adapterId,proto3" json:"adapter_id,omitempty"`
-	AdapterVersion string                 `protobuf:"bytes,2,opt,name=adapter_version,json=adapterVersion,proto3" json:"adapter_version,omitempty"`
-	Healthy        bool                   `protobuf:"varint,3,opt,name=healthy,proto3" json:"healthy,omitempty"`
-	Links          []*LinkStatus          `protobuf:"bytes,4,rep,name=links,proto3" json:"links,omitempty"`
-	MtSubmitted    int64                  `protobuf:"varint,5,opt,name=mt_submitted,json=mtSubmitted,proto3" json:"mt_submitted,omitempty"`
-	MtDelivered    int64                  `protobuf:"varint,6,opt,name=mt_delivered,json=mtDelivered,proto3" json:"mt_delivered,omitempty"`
-	MtFailed       int64                  `protobuf:"varint,7,opt,name=mt_failed,json=mtFailed,proto3" json:"mt_failed,omitempty"`
-	MoReceived     int64                  `protobuf:"varint,8,opt,name=mo_received,json=moReceived,proto3" json:"mo_received,omitempty"`
-	DlrReceived    int64                  `protobuf:"varint,9,opt,name=dlr_received,json=dlrReceived,proto3" json:"dlr_received,omitempty"`
-	ActiveDialogs  int64                  `protobuf:"varint,10,opt,name=active_dialogs,json=activeDialogs,proto3" json:"active_dialogs,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
-}
-
-func (x *AdapterStatus) Reset() {
-	*x = AdapterStatus{}
-	mi := &file_proto_smscv1_adapter_proto_msgTypes[5]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AdapterStatus) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AdapterStatus) ProtoMessage() {}
-
-func (x *AdapterStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_smscv1_adapter_proto_msgTypes[5]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AdapterStatus.ProtoReflect.Descriptor instead.
-func (*AdapterStatus) Descriptor() ([]byte, []int) {
-	return file_proto_smscv1_adapter_proto_rawDescGZIP(), []int{5}
-}
-
-func (x *AdapterStatus) GetAdapterId() string {
-	if x != nil {
-		return x.AdapterId
-	}
-	return ""
-}
-
-func (x *AdapterStatus) GetAdapterVersion() string {
-	if x != nil {
-		return x.AdapterVersion
-	}
-	return ""
-}
-
-func (x *AdapterStatus) GetHealthy() bool {
-	if x != nil {
-		return x.Healthy
-	}
-	return false
-}
-
-func (x *AdapterStatus) GetLinks() []*LinkStatus {
-	if x != nil {
-		return x.Links
-	}
-	return nil
-}
-
-func (x *AdapterStatus) GetMtSubmitted() int64 {
-	if x != nil {
-		return x.MtSubmitted
-	}
-	return 0
-}
-
-func (x *AdapterStatus) GetMtDelivered() int64 {
-	if x != nil {
-		return x.MtDelivered
-	}
-	return 0
-}
-
-func (x *AdapterStatus) GetMtFailed() int64 {
-	if x != nil {
-		return x.MtFailed
-	}
-	return 0
-}
-
-func (x *AdapterStatus) GetMoReceived() int64 {
-	if x != nil {
-		return x.MoReceived
-	}
-	return 0
-}
-
-func (x *AdapterStatus) GetDlrReceived() int64 {
-	if x != nil {
-		return x.DlrReceived
-	}
-	return 0
-}
-
-func (x *AdapterStatus) GetActiveDialogs() int64 {
-	if x != nil {
-		return x.ActiveDialogs
-	}
-	return 0
-}
-
-type LinkStatus struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	Name             string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	State            string                 `protobuf:"bytes,2,opt,name=state,proto3" json:"state,omitempty"`
-	PeerAddress      string                 `protobuf:"bytes,3,opt,name=peer_address,json=peerAddress,proto3" json:"peer_address,omitempty"`
-	MessagesSent     int64                  `protobuf:"varint,4,opt,name=messages_sent,json=messagesSent,proto3" json:"messages_sent,omitempty"`
-	MessagesReceived int64                  `protobuf:"varint,5,opt,name=messages_received,json=messagesReceived,proto3" json:"messages_received,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
-}
-
-func (x *LinkStatus) Reset() {
-	*x = LinkStatus{}
-	mi := &file_proto_smscv1_adapter_proto_msgTypes[6]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *LinkStatus) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*LinkStatus) ProtoMessage() {}
-
-func (x *LinkStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_smscv1_adapter_proto_msgTypes[6]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use LinkStatus.ProtoReflect.Descriptor instead.
-func (*LinkStatus) Descriptor() ([]byte, []int) {
-	return file_proto_smscv1_adapter_proto_rawDescGZIP(), []int{6}
-}
-
-func (x *LinkStatus) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
-}
-
-func (x *LinkStatus) GetState() string {
-	if x != nil {
-		return x.State
-	}
-	return ""
-}
-
-func (x *LinkStatus) GetPeerAddress() string {
-	if x != nil {
-		return x.PeerAddress
-	}
-	return ""
-}
-
-func (x *LinkStatus) GetMessagesSent() int64 {
-	if x != nil {
-		return x.MessagesSent
-	}
-	return 0
-}
-
-func (x *LinkStatus) GetMessagesReceived() int64 {
-	if x != nil {
-		return x.MessagesReceived
-	}
-	return 0
-}
-
 type CancelMTRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	MessageId     string                 `protobuf:"bytes,1,opt,name=message_id,json=messageId,proto3" json:"message_id,omitempty"`
@@ -758,7 +530,7 @@ type CancelMTRequest struct {
 
 func (x *CancelMTRequest) Reset() {
 	*x = CancelMTRequest{}
-	mi := &file_proto_smscv1_adapter_proto_msgTypes[7]
+	mi := &file_proto_smscv1_sms_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -770,7 +542,7 @@ func (x *CancelMTRequest) String() string {
 func (*CancelMTRequest) ProtoMessage() {}
 
 func (x *CancelMTRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_smscv1_adapter_proto_msgTypes[7]
+	mi := &file_proto_smscv1_sms_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -783,7 +555,7 @@ func (x *CancelMTRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelMTRequest.ProtoReflect.Descriptor instead.
 func (*CancelMTRequest) Descriptor() ([]byte, []int) {
-	return file_proto_smscv1_adapter_proto_rawDescGZIP(), []int{7}
+	return file_proto_smscv1_sms_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *CancelMTRequest) GetMessageId() string {
@@ -803,7 +575,7 @@ type CancelMTResponse struct {
 
 func (x *CancelMTResponse) Reset() {
 	*x = CancelMTResponse{}
-	mi := &file_proto_smscv1_adapter_proto_msgTypes[8]
+	mi := &file_proto_smscv1_sms_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -815,7 +587,7 @@ func (x *CancelMTResponse) String() string {
 func (*CancelMTResponse) ProtoMessage() {}
 
 func (x *CancelMTResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_smscv1_adapter_proto_msgTypes[8]
+	mi := &file_proto_smscv1_sms_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -828,7 +600,7 @@ func (x *CancelMTResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelMTResponse.ProtoReflect.Descriptor instead.
 func (*CancelMTResponse) Descriptor() ([]byte, []int) {
-	return file_proto_smscv1_adapter_proto_rawDescGZIP(), []int{8}
+	return file_proto_smscv1_sms_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *CancelMTResponse) GetStatus() uint32 {
@@ -845,11 +617,96 @@ func (x *CancelMTResponse) GetErrorMessage() string {
 	return ""
 }
 
-var File_proto_smscv1_adapter_proto protoreflect.FileDescriptor
+// SMS-specific status extending the common AdapterStatus.
+type SMSAdapterStatus struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Base          *AdapterStatus         `protobuf:"bytes,1,opt,name=base,proto3" json:"base,omitempty"`
+	MtSubmitted   int64                  `protobuf:"varint,2,opt,name=mt_submitted,json=mtSubmitted,proto3" json:"mt_submitted,omitempty"`
+	MtDelivered   int64                  `protobuf:"varint,3,opt,name=mt_delivered,json=mtDelivered,proto3" json:"mt_delivered,omitempty"`
+	MtFailed      int64                  `protobuf:"varint,4,opt,name=mt_failed,json=mtFailed,proto3" json:"mt_failed,omitempty"`
+	MoReceived    int64                  `protobuf:"varint,5,opt,name=mo_received,json=moReceived,proto3" json:"mo_received,omitempty"`
+	DlrReceived   int64                  `protobuf:"varint,6,opt,name=dlr_received,json=dlrReceived,proto3" json:"dlr_received,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
 
-const file_proto_smscv1_adapter_proto_rawDesc = "" +
+func (x *SMSAdapterStatus) Reset() {
+	*x = SMSAdapterStatus{}
+	mi := &file_proto_smscv1_sms_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SMSAdapterStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SMSAdapterStatus) ProtoMessage() {}
+
+func (x *SMSAdapterStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_smscv1_sms_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SMSAdapterStatus.ProtoReflect.Descriptor instead.
+func (*SMSAdapterStatus) Descriptor() ([]byte, []int) {
+	return file_proto_smscv1_sms_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *SMSAdapterStatus) GetBase() *AdapterStatus {
+	if x != nil {
+		return x.Base
+	}
+	return nil
+}
+
+func (x *SMSAdapterStatus) GetMtSubmitted() int64 {
+	if x != nil {
+		return x.MtSubmitted
+	}
+	return 0
+}
+
+func (x *SMSAdapterStatus) GetMtDelivered() int64 {
+	if x != nil {
+		return x.MtDelivered
+	}
+	return 0
+}
+
+func (x *SMSAdapterStatus) GetMtFailed() int64 {
+	if x != nil {
+		return x.MtFailed
+	}
+	return 0
+}
+
+func (x *SMSAdapterStatus) GetMoReceived() int64 {
+	if x != nil {
+		return x.MoReceived
+	}
+	return 0
+}
+
+func (x *SMSAdapterStatus) GetDlrReceived() int64 {
+	if x != nil {
+		return x.DlrReceived
+	}
+	return 0
+}
+
+var File_proto_smscv1_sms_proto protoreflect.FileDescriptor
+
+const file_proto_smscv1_sms_proto_rawDesc = "" +
 	"\n" +
-	"\x1aproto/smscv1/adapter.proto\x12\asmsc.v1\"\xd8\x04\n" +
+	"\x16proto/smscv1/sms.proto\x12\asmsc.v1\x1a\x19proto/smscv1/common.proto\"\xd8\x04\n" +
 	"\x0fSubmitMTRequest\x12\x1d\n" +
 	"\n" +
 	"message_id\x18\x01 \x01(\tR\tmessageId\x12\x1f\n" +
@@ -909,88 +766,75 @@ const file_proto_smscv1_adapter_proto_rawDesc = "" +
 	"\x04tlvs\x18\x12 \x03(\v2\".smsc.v1.DeliveryMessage.TlvsEntryR\x04tlvs\x1a7\n" +
 	"\tTlvsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\"\x12\n" +
-	"\x10GetStatusRequest\"\xea\x02\n" +
-	"\rAdapterStatus\x12\x1d\n" +
-	"\n" +
-	"adapter_id\x18\x01 \x01(\tR\tadapterId\x12'\n" +
-	"\x0fadapter_version\x18\x02 \x01(\tR\x0eadapterVersion\x12\x18\n" +
-	"\ahealthy\x18\x03 \x01(\bR\ahealthy\x12)\n" +
-	"\x05links\x18\x04 \x03(\v2\x13.smsc.v1.LinkStatusR\x05links\x12!\n" +
-	"\fmt_submitted\x18\x05 \x01(\x03R\vmtSubmitted\x12!\n" +
-	"\fmt_delivered\x18\x06 \x01(\x03R\vmtDelivered\x12\x1b\n" +
-	"\tmt_failed\x18\a \x01(\x03R\bmtFailed\x12\x1f\n" +
-	"\vmo_received\x18\b \x01(\x03R\n" +
-	"moReceived\x12!\n" +
-	"\fdlr_received\x18\t \x01(\x03R\vdlrReceived\x12%\n" +
-	"\x0eactive_dialogs\x18\n" +
-	" \x01(\x03R\ractiveDialogs\"\xab\x01\n" +
-	"\n" +
-	"LinkStatus\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
-	"\x05state\x18\x02 \x01(\tR\x05state\x12!\n" +
-	"\fpeer_address\x18\x03 \x01(\tR\vpeerAddress\x12#\n" +
-	"\rmessages_sent\x18\x04 \x01(\x03R\fmessagesSent\x12+\n" +
-	"\x11messages_received\x18\x05 \x01(\x03R\x10messagesReceived\"0\n" +
+	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\"0\n" +
 	"\x0fCancelMTRequest\x12\x1d\n" +
 	"\n" +
 	"message_id\x18\x01 \x01(\tR\tmessageId\"O\n" +
 	"\x10CancelMTResponse\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\rR\x06status\x12#\n" +
-	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage*M\n" +
+	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\"\xe5\x01\n" +
+	"\x10SMSAdapterStatus\x12*\n" +
+	"\x04base\x18\x01 \x01(\v2\x16.smsc.v1.AdapterStatusR\x04base\x12!\n" +
+	"\fmt_submitted\x18\x02 \x01(\x03R\vmtSubmitted\x12!\n" +
+	"\fmt_delivered\x18\x03 \x01(\x03R\vmtDelivered\x12\x1b\n" +
+	"\tmt_failed\x18\x04 \x01(\x03R\bmtFailed\x12\x1f\n" +
+	"\vmo_received\x18\x05 \x01(\x03R\n" +
+	"moReceived\x12!\n" +
+	"\fdlr_received\x18\x06 \x01(\x03R\vdlrReceived*M\n" +
 	"\fDeliveryType\x12\x1d\n" +
 	"\x19DELIVERY_TYPE_UNSPECIFIED\x10\x00\x12\n" +
 	"\n" +
 	"\x06MO_SMS\x10\x01\x12\a\n" +
 	"\x03DLR\x10\x02\x12\t\n" +
-	"\x05ALERT\x10\x032\xa7\x02\n" +
+	"\x05ALERT\x10\x032\xaa\x02\n" +
 	"\x11SMSAdapterService\x12?\n" +
 	"\bSubmitMT\x12\x18.smsc.v1.SubmitMTRequest\x1a\x19.smsc.v1.SubmitMTResponse\x12P\n" +
-	"\x10StreamDeliveries\x12 .smsc.v1.StreamDeliveriesRequest\x1a\x18.smsc.v1.DeliveryMessage0\x01\x12>\n" +
-	"\tGetStatus\x12\x19.smsc.v1.GetStatusRequest\x1a\x16.smsc.v1.AdapterStatus\x12?\n" +
-	"\bCancelMT\x12\x18.smsc.v1.CancelMTRequest\x1a\x19.smsc.v1.CancelMTResponseB(Z&github.com/idnteq/go-smsc/proto/smscv1b\x06proto3"
+	"\x10StreamDeliveries\x12 .smsc.v1.StreamDeliveriesRequest\x1a\x18.smsc.v1.DeliveryMessage0\x01\x12?\n" +
+	"\bCancelMT\x12\x18.smsc.v1.CancelMTRequest\x1a\x19.smsc.v1.CancelMTResponse\x12A\n" +
+	"\tGetStatus\x12\x19.smsc.v1.GetStatusRequest\x1a\x19.smsc.v1.SMSAdapterStatusB@\n" +
+	"\x16com.idnteq.ss7gw.protoZ&github.com/idnteq/go-smsc/proto/smscv1b\x06proto3"
 
 var (
-	file_proto_smscv1_adapter_proto_rawDescOnce sync.Once
-	file_proto_smscv1_adapter_proto_rawDescData []byte
+	file_proto_smscv1_sms_proto_rawDescOnce sync.Once
+	file_proto_smscv1_sms_proto_rawDescData []byte
 )
 
-func file_proto_smscv1_adapter_proto_rawDescGZIP() []byte {
-	file_proto_smscv1_adapter_proto_rawDescOnce.Do(func() {
-		file_proto_smscv1_adapter_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proto_smscv1_adapter_proto_rawDesc), len(file_proto_smscv1_adapter_proto_rawDesc)))
+func file_proto_smscv1_sms_proto_rawDescGZIP() []byte {
+	file_proto_smscv1_sms_proto_rawDescOnce.Do(func() {
+		file_proto_smscv1_sms_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proto_smscv1_sms_proto_rawDesc), len(file_proto_smscv1_sms_proto_rawDesc)))
 	})
-	return file_proto_smscv1_adapter_proto_rawDescData
+	return file_proto_smscv1_sms_proto_rawDescData
 }
 
-var file_proto_smscv1_adapter_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_proto_smscv1_adapter_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
-var file_proto_smscv1_adapter_proto_goTypes = []any{
+var file_proto_smscv1_sms_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_proto_smscv1_sms_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_proto_smscv1_sms_proto_goTypes = []any{
 	(DeliveryType)(0),               // 0: smsc.v1.DeliveryType
 	(*SubmitMTRequest)(nil),         // 1: smsc.v1.SubmitMTRequest
 	(*SubmitMTResponse)(nil),        // 2: smsc.v1.SubmitMTResponse
 	(*StreamDeliveriesRequest)(nil), // 3: smsc.v1.StreamDeliveriesRequest
 	(*DeliveryMessage)(nil),         // 4: smsc.v1.DeliveryMessage
-	(*GetStatusRequest)(nil),        // 5: smsc.v1.GetStatusRequest
-	(*AdapterStatus)(nil),           // 6: smsc.v1.AdapterStatus
-	(*LinkStatus)(nil),              // 7: smsc.v1.LinkStatus
-	(*CancelMTRequest)(nil),         // 8: smsc.v1.CancelMTRequest
-	(*CancelMTResponse)(nil),        // 9: smsc.v1.CancelMTResponse
-	nil,                             // 10: smsc.v1.SubmitMTRequest.TlvsEntry
-	nil,                             // 11: smsc.v1.DeliveryMessage.TlvsEntry
+	(*CancelMTRequest)(nil),         // 5: smsc.v1.CancelMTRequest
+	(*CancelMTResponse)(nil),        // 6: smsc.v1.CancelMTResponse
+	(*SMSAdapterStatus)(nil),        // 7: smsc.v1.SMSAdapterStatus
+	nil,                             // 8: smsc.v1.SubmitMTRequest.TlvsEntry
+	nil,                             // 9: smsc.v1.DeliveryMessage.TlvsEntry
+	(*AdapterStatus)(nil),           // 10: smsc.v1.AdapterStatus
+	(*GetStatusRequest)(nil),        // 11: smsc.v1.GetStatusRequest
 }
-var file_proto_smscv1_adapter_proto_depIdxs = []int32{
-	10, // 0: smsc.v1.SubmitMTRequest.tlvs:type_name -> smsc.v1.SubmitMTRequest.TlvsEntry
+var file_proto_smscv1_sms_proto_depIdxs = []int32{
+	8,  // 0: smsc.v1.SubmitMTRequest.tlvs:type_name -> smsc.v1.SubmitMTRequest.TlvsEntry
 	0,  // 1: smsc.v1.DeliveryMessage.type:type_name -> smsc.v1.DeliveryType
-	11, // 2: smsc.v1.DeliveryMessage.tlvs:type_name -> smsc.v1.DeliveryMessage.TlvsEntry
-	7,  // 3: smsc.v1.AdapterStatus.links:type_name -> smsc.v1.LinkStatus
+	9,  // 2: smsc.v1.DeliveryMessage.tlvs:type_name -> smsc.v1.DeliveryMessage.TlvsEntry
+	10, // 3: smsc.v1.SMSAdapterStatus.base:type_name -> smsc.v1.AdapterStatus
 	1,  // 4: smsc.v1.SMSAdapterService.SubmitMT:input_type -> smsc.v1.SubmitMTRequest
 	3,  // 5: smsc.v1.SMSAdapterService.StreamDeliveries:input_type -> smsc.v1.StreamDeliveriesRequest
-	5,  // 6: smsc.v1.SMSAdapterService.GetStatus:input_type -> smsc.v1.GetStatusRequest
-	8,  // 7: smsc.v1.SMSAdapterService.CancelMT:input_type -> smsc.v1.CancelMTRequest
+	5,  // 6: smsc.v1.SMSAdapterService.CancelMT:input_type -> smsc.v1.CancelMTRequest
+	11, // 7: smsc.v1.SMSAdapterService.GetStatus:input_type -> smsc.v1.GetStatusRequest
 	2,  // 8: smsc.v1.SMSAdapterService.SubmitMT:output_type -> smsc.v1.SubmitMTResponse
 	4,  // 9: smsc.v1.SMSAdapterService.StreamDeliveries:output_type -> smsc.v1.DeliveryMessage
-	6,  // 10: smsc.v1.SMSAdapterService.GetStatus:output_type -> smsc.v1.AdapterStatus
-	9,  // 11: smsc.v1.SMSAdapterService.CancelMT:output_type -> smsc.v1.CancelMTResponse
+	6,  // 10: smsc.v1.SMSAdapterService.CancelMT:output_type -> smsc.v1.CancelMTResponse
+	7,  // 11: smsc.v1.SMSAdapterService.GetStatus:output_type -> smsc.v1.SMSAdapterStatus
 	8,  // [8:12] is the sub-list for method output_type
 	4,  // [4:8] is the sub-list for method input_type
 	4,  // [4:4] is the sub-list for extension type_name
@@ -998,27 +842,28 @@ var file_proto_smscv1_adapter_proto_depIdxs = []int32{
 	0,  // [0:4] is the sub-list for field type_name
 }
 
-func init() { file_proto_smscv1_adapter_proto_init() }
-func file_proto_smscv1_adapter_proto_init() {
-	if File_proto_smscv1_adapter_proto != nil {
+func init() { file_proto_smscv1_sms_proto_init() }
+func file_proto_smscv1_sms_proto_init() {
+	if File_proto_smscv1_sms_proto != nil {
 		return
 	}
+	file_proto_smscv1_common_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_smscv1_adapter_proto_rawDesc), len(file_proto_smscv1_adapter_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_smscv1_sms_proto_rawDesc), len(file_proto_smscv1_sms_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   11,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_proto_smscv1_adapter_proto_goTypes,
-		DependencyIndexes: file_proto_smscv1_adapter_proto_depIdxs,
-		EnumInfos:         file_proto_smscv1_adapter_proto_enumTypes,
-		MessageInfos:      file_proto_smscv1_adapter_proto_msgTypes,
+		GoTypes:           file_proto_smscv1_sms_proto_goTypes,
+		DependencyIndexes: file_proto_smscv1_sms_proto_depIdxs,
+		EnumInfos:         file_proto_smscv1_sms_proto_enumTypes,
+		MessageInfos:      file_proto_smscv1_sms_proto_msgTypes,
 	}.Build()
-	File_proto_smscv1_adapter_proto = out.File
-	file_proto_smscv1_adapter_proto_goTypes = nil
-	file_proto_smscv1_adapter_proto_depIdxs = nil
+	File_proto_smscv1_sms_proto = out.File
+	file_proto_smscv1_sms_proto_goTypes = nil
+	file_proto_smscv1_sms_proto_depIdxs = nil
 }

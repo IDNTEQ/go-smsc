@@ -1,0 +1,106 @@
+syntax = "proto3";
+package smsc.v1;
+
+option go_package = "github.com/idnteq/go-smsc/proto/smscv1";
+option java_package = "com.idnteq.ss7gw.proto";
+
+import "proto/smscv1/common.proto";
+
+// USSDAdapterService handles USSD sessions over downstream networks.
+service USSDAdapterService {
+  // Initiate a network-originated USSD push to a subscriber.
+  rpc SendUSSD(SendUSSDRequest) returns (SendUSSDResponse);
+
+  // Server-streaming channel for subscriber-initiated USSD requests.
+  rpc StreamUSSD(StreamUSSDRequest) returns (stream USSDEvent);
+
+  // Reply to an active subscriber-initiated USSD session.
+  rpc ReplyUSSD(ReplyUSSDRequest) returns (ReplyUSSDResponse);
+
+  // End a USSD session without sending a response.
+  rpc EndSession(EndUSSDSessionRequest) returns (EndUSSDSessionResponse);
+
+  // Query adapter health and USSD counters.
+  rpc GetStatus(GetStatusRequest) returns (USSDAdapterStatus);
+}
+
+// -------------------------------------------------------------------
+// Network-originated USSD (Gateway → Adapter → Subscriber)
+// -------------------------------------------------------------------
+
+message SendUSSDRequest {
+  string session_id = 1;       // Gateway-assigned session ID
+  string msisdn = 2;           // Target subscriber (E.164)
+  string ussd_string = 3;      // USSD message/menu text
+  uint32 data_coding = 4;      // CBS data coding (0x0F = GSM 7-bit default)
+}
+
+message SendUSSDResponse {
+  string session_id = 1;
+  uint32 status = 2;           // 0 = success
+  string error_message = 3;
+  string response_string = 4;  // Subscriber's response (if any)
+}
+
+// -------------------------------------------------------------------
+// Subscriber-initiated USSD (Network → Adapter → Gateway)
+// -------------------------------------------------------------------
+
+message StreamUSSDRequest {
+  string client_id = 1;
+}
+
+message USSDEvent {
+  string session_id = 1;
+  USSDEventType type = 2;
+  string msisdn = 3;
+  string ussd_string = 4;      // USSD code or menu response from subscriber
+  uint32 data_coding = 5;
+  int64 dialog_id = 6;         // MAP dialog ID (for routing replies)
+  int32 invoke_id = 7;         // MAP invoke ID (for routing replies)
+}
+
+enum USSDEventType {
+  USSD_EVENT_UNSPECIFIED = 0;
+  USSD_REQUEST = 1;            // Subscriber dialed a USSD code (*123#)
+  USSD_NOTIFY = 2;             // Network notification
+  USSD_RESPONSE = 3;           // Subscriber replied to a menu prompt
+  USSD_ABORT = 4;              // Session aborted by subscriber or network
+}
+
+// -------------------------------------------------------------------
+// Reply to active USSD session
+// -------------------------------------------------------------------
+
+message ReplyUSSDRequest {
+  string session_id = 1;
+  int64 dialog_id = 2;
+  int32 invoke_id = 3;
+  string response_string = 4;  // Response/menu text to send
+  uint32 data_coding = 5;
+  bool end_session = 6;        // True to close the dialog after this response
+}
+
+message ReplyUSSDResponse {
+  uint32 status = 1;
+  string error_message = 2;
+}
+
+message EndUSSDSessionRequest {
+  string session_id = 1;
+  int64 dialog_id = 2;
+}
+
+message EndUSSDSessionResponse {
+  uint32 status = 1;
+  string error_message = 2;
+}
+
+// USSD-specific status.
+message USSDAdapterStatus {
+  AdapterStatus base = 1;
+  int64 sessions_initiated = 2;
+  int64 sessions_received = 3;
+  int64 sessions_active = 4;
+  int64 sessions_failed = 5;
+}
