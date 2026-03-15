@@ -1,0 +1,121 @@
+syntax = "proto3";
+package smsc.v1;
+
+option go_package = "github.com/idnteq/go-smsc/proto/smscv1";
+
+// SMSAdapterService is implemented by downstream adapters (SS7, HTTP, etc.).
+// The SMSC gateway connects as a gRPC client.
+service SMSAdapterService {
+  // Submit an MT-SMS for delivery.
+  rpc SubmitMT(SubmitMTRequest) returns (SubmitMTResponse);
+
+  // Server-streaming channel for MO-SMS, DLRs, and alerts from the network.
+  rpc StreamDeliveries(StreamDeliveriesRequest) returns (stream DeliveryMessage);
+
+  // Query adapter health and link status.
+  rpc GetStatus(GetStatusRequest) returns (AdapterStatus);
+
+  // Cancel a previously submitted MT-SMS.
+  rpc CancelMT(CancelMTRequest) returns (CancelMTResponse);
+}
+
+// -------------------------------------------------------------------
+// MT-SMS (Gateway → Adapter → Network)
+// -------------------------------------------------------------------
+
+message SubmitMTRequest {
+  string message_id = 1;
+  string source_addr = 2;
+  uint32 source_addr_ton = 3;
+  uint32 source_addr_npi = 4;
+  string dest_addr = 5;
+  uint32 dest_addr_ton = 6;
+  uint32 dest_addr_npi = 7;
+  bytes payload = 8;
+  uint32 data_coding = 9;
+  bool register_dlr = 10;
+  uint32 esm_class = 11;
+  uint32 protocol_id = 12;
+  uint32 priority = 13;
+  string validity_period = 14;
+  map<string, bytes> tlvs = 15;
+}
+
+message SubmitMTResponse {
+  string message_id = 1;
+  uint32 status = 2;
+  string error_message = 3;
+}
+
+// -------------------------------------------------------------------
+// MO-SMS + DLR (Network → Adapter → Gateway)
+// -------------------------------------------------------------------
+
+message StreamDeliveriesRequest {
+  string client_id = 1;
+  uint32 max_inflight = 2;
+}
+
+message DeliveryMessage {
+  string delivery_id = 1;
+  DeliveryType type = 2;
+  string source_addr = 3;
+  uint32 source_addr_ton = 4;
+  uint32 source_addr_npi = 5;
+  string dest_addr = 6;
+  uint32 dest_addr_ton = 7;
+  uint32 dest_addr_npi = 8;
+  bytes payload = 9;
+  uint32 data_coding = 10;
+  uint32 esm_class = 11;
+  uint32 protocol_id = 12;
+  string original_message_id = 13;
+  string dlr_status = 14;
+  string dlr_error_code = 15;
+  string dlr_done_date = 16;
+  string alert_msisdn = 17;
+  map<string, bytes> tlvs = 18;
+}
+
+enum DeliveryType {
+  DELIVERY_TYPE_UNSPECIFIED = 0;
+  MO_SMS = 1;
+  DLR = 2;
+  ALERT = 3;
+}
+
+// -------------------------------------------------------------------
+// Status + Management
+// -------------------------------------------------------------------
+
+message GetStatusRequest {}
+
+message AdapterStatus {
+  string adapter_id = 1;
+  string adapter_version = 2;
+  bool healthy = 3;
+  repeated LinkStatus links = 4;
+  int64 mt_submitted = 5;
+  int64 mt_delivered = 6;
+  int64 mt_failed = 7;
+  int64 mo_received = 8;
+  int64 dlr_received = 9;
+  int64 active_dialogs = 10;
+}
+
+message LinkStatus {
+  string name = 1;
+  string state = 2;
+  string peer_address = 3;
+  int64 messages_sent = 4;
+  int64 messages_received = 5;
+}
+
+message CancelMTRequest {
+  string message_id = 1;
+}
+
+message CancelMTResponse {
+  uint32 status = 1;
+  string error_message = 2;
+}
